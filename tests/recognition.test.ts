@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { fillDocument, planFill } from '../src/lib/fill/fill';
+import { fillDocument, planFill, runFill, undoFill } from '../src/lib/fill/fill';
 import { sampleProfile } from './fixtures/profile';
 import { scorePlan } from './fixtures/score';
 
@@ -65,3 +65,36 @@ describe('原生表单填写', () => {
 });
 
 function $(sel: string) { return document.querySelector(sel); }
+
+describe('高风险字段与撤销', () => {
+  it('籍贯、学历等填上后也标黄请核对', async () => {
+    load('native.html');
+    const report = await fillDocument(document, sampleProfile());
+    const by = (label: string) => report.items.find((i) => i.label.startsWith(label));
+    expect(by('籍贯')).toMatchObject({ status: 'warn', value: '湖南长沙', note: '重要信息，请核对' });
+    expect(by('学历')).toMatchObject({ status: 'warn' });
+    expect(by('姓名')).toMatchObject({ status: 'ok' });
+  });
+
+  it('撤销后恢复成填写前的样子', async () => {
+    load('native.html');
+    ($('#zy2') as HTMLInputElement).value = '已有内容';
+    const run = await runFill(document, sampleProfile());
+    expect(($('#xm') as HTMLInputElement).value).toBe('王小明');
+    const r = await undoFill(run.entries);
+    expect(r.failed).toEqual([]);
+    expect(r.restored).toBeGreaterThan(30);
+    expect(($('#xm') as HTMLInputElement).value).toBe('');
+    expect(($('#mz') as HTMLSelectElement).value).toBe('');
+    expect(($('input[name=sex][value="1"]') as HTMLInputElement).checked).toBe(false);
+    expect(($('#ks') as HTMLInputElement).value).toBe('');
+    expect(($('#zy2') as HTMLInputElement).value).toBe('已有内容');
+  });
+
+  it('“请选择”占位选项算空，会正常填写', async () => {
+    document.body.innerHTML = `<h3>基本信息</h3><label for="g">性别</label>
+      <select id="g"><option value="-1">请选择</option><option value="1">男</option><option value="2">女</option></select>`;
+    const report = await fillDocument(document, sampleProfile());
+    expect(report.items[0]).toMatchObject({ status: 'ok', value: '男' });
+  });
+});

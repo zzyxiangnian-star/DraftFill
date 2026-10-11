@@ -124,3 +124,5 @@ input[type="month"].input, input[type="date"].input { font-variant-numeric: tabu
 .report-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .report-list .status { animation: enter var(--dur) var(--ease-enter) both; }
 @media (prefers-reduced-motion: reduce) { .report-list .status { animation-name: fade; } }
+.status-btn { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+.status-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }

@@ -7,3 +7,4 @@ body { width: 380px; }
 .profile-select:hover { background: var(--surface-muted); }
 .profile-select:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .clamp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notice { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-muted); color: var(--text); }

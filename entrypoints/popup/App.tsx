@@ -1,10 +1,10 @@
-import { ArrowRight, PanelRight, Settings, Sparkles, UserRound } from 'lucide-react';
+import { ArrowRight, PanelRight, Settings, Sparkles, Undo2, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { Logo } from '@/src/components/Logo';
-import { Counts, ReportList } from '@/src/components/Report';
+import { Counts, ReportList, revealField } from '@/src/components/Report';
 import { StatusRow } from '@/src/components/StatusRow';
 import { iconProps } from '@/src/components/icon';
-import type { FillResult, Request } from '@/src/lib/messages';
+import type { FillResult, Request, UndoResult } from '@/src/lib/messages';
 import { activeProfile, setActive } from '@/src/lib/profile/store';
 import { useProfileStore } from '@/src/lib/profile/useProfileStore';
 
@@ -13,10 +13,31 @@ const PREVIEW = 5;
 export function App() {
   const [result, setResult] = useState<FillResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const { store, commit } = useProfileStore();
   const active = store && activeProfile(store);
 
+  async function undo() {
+    setBusy(true);
+    try {
+      const r = await browser.runtime.sendMessage<Request, UndoResult>({ type: 'undo-active-tab' });
+      if (!r.ok) return setNotice(r.reason);
+      setResult(null);
+      setNotice(r.failed.length
+        ? `已恢复 ${r.restored} 项。${r.failed.join('、')} 没能自动清空，请手动处理。`
+        : `已恢复 ${r.restored} 项，页面回到了填写前的样子。`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reveal(index: number) {
+    const err = await revealField(index);
+    if (err) setNotice(err);
+  }
+
   async function fill() {
+    setNotice(null);
     setBusy(true);
     try {
       setResult(await browser.runtime.sendMessage<Request, FillResult>({ type: 'fill-active-tab' }));
@@ -74,12 +95,15 @@ export function App() {
 
       {result?.ok && (
         <div className="stack">
-          <ReportList report={result.report} limit={PREVIEW} />
-          {result.report.items.length > PREVIEW && (
-            <button className="btn btn-text small" onClick={openSidePanel}>在侧边栏查看全部 {result.report.items.length} 项</button>
-          )}
+          <ReportList report={result.report} limit={PREVIEW} onReveal={reveal} />
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <button className="btn btn-text small" onClick={openSidePanel}>查看全部 {result.report.items.length} 项</button>
+            <button className="btn btn-text small" onClick={undo} disabled={busy}><Undo2 {...iconProps} /> 撤销本次填写</button>
+          </div>
         </div>
       )}
+
+      {notice && <p className="notice small enter" role="status">{notice}</p>}
 
       {store && !active ? (
         <button className="btn btn-primary btn-block" onClick={openOptions}>

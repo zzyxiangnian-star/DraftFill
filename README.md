@@ -2,7 +2,7 @@
 
 Edge / Chrome 浏览器插件：在国内校招、社招网申页面一键填写本地档案，清楚标出哪些填了、哪些需要确认、哪些没填及原因。**只填不交**，检查后由你自己提交。
 
-> 当前进度：阶段 2（字段识别与一键填充，已在自制测试表单上通过）。完整计划见 [docs/PLAN.md](docs/PLAN.md)，设计规范见 [design/](design/)。
+> 当前进度：阶段 3 进行中。已完成页面标色、点结果定位字段、一键撤销、高风险字段标黄；北森、Moka 适配器等待真实页面快照。完整计划见 [docs/PLAN.md](docs/PLAN.md)，设计规范见 [design/](design/)。
 
 ## 开发
 
@@ -51,7 +51,7 @@ entrypoints/
   content.ts    在网申页面里扫描、填写（运行时注入，不常驻）
 src/
   lib/profile/  档案结构、存储、导入导出
-  lib/fill/     字段识别（detect）、词典（aliases）、匹配（match）、填写与回读（fill）、只填不交（safety）
+  lib/fill/     字段识别（detect）、词典（aliases）、匹配（match）、填写回读与撤销（fill）、页面标色（marks）、只填不交（safety）
   lib/          其他与界面无关的逻辑
   components/   共用 React 组件
   styles/       tokens.css（设计规范的唯一来源）+ base.css

@@ -14,7 +14,8 @@ const resolve = (name: string) => app.component(name)!;
 function item(path: string, label: string, key: string, control: 'input' | 'textarea' | 'select' | 'month' | 'date', options: string[] = []) {
   const model = { modelValue: form[key], 'onUpdate:modelValue': (v: string) => { form[key] = v; } };
   const inner =
-    control === 'select' ? h(resolve('ElSelect'), { ...model, placeholder: '请选择' }, () => opts(options))
+    // 学历下拉故意不带清空按钮，用来测试“无法自动撤销”的提示
+    control === 'select' ? h(resolve('ElSelect'), { ...model, placeholder: '请选择', clearable: key !== 'degree' }, () => opts(options))
     : control === 'month' ? h(resolve('ElDatePicker'), { ...model, type: 'month', placeholder: '选择月份', valueFormat: 'YYYY-MM', format: 'YYYY-MM' })
     : control === 'date' ? h(resolve('ElDatePicker'), { ...model, type: 'date', placeholder: '选择日期', valueFormat: 'YYYY-MM-DD', format: 'YYYY-MM-DD' })
     : h(resolve('ElInput'), { ...model, type: control === 'textarea' ? 'textarea' : 'text' });

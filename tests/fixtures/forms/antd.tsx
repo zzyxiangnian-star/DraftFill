@@ -19,13 +19,13 @@ function App() {
           <E path="basic.phone"><Form.Item label="手机" name="mobile"><Input /></Form.Item></E>
           <E path="basic.email"><Form.Item label="邮箱" name="email"><Input /></Form.Item></E>
           <E path="basic.gender"><Form.Item label="性别" name="gender"><Radio.Group options={['男', '女']} /></Form.Item></E>
-          <E path="basic.ethnicity"><Form.Item label="民族" name="nation"><Select options={opts(ETHNICITIES)} placeholder="请选择" /></Form.Item></E>
-          <E path="basic.politicalStatus"><Form.Item label="政治面貌" name="political"><Select options={opts(['中共党员', '中共预备党员', '共青团员', '群众'])} /></Form.Item></E>
+          <E path="basic.ethnicity"><Form.Item label="民族" name="nation"><Select allowClear options={opts(ETHNICITIES)} placeholder="请选择" /></Form.Item></E>
+          <E path="basic.politicalStatus"><Form.Item label="政治面貌" name="political"><Select allowClear options={opts(['中共党员', '中共预备党员', '共青团员', '群众'])} /></Form.Item></E>
           <E path="basic.birthDate"><Form.Item label="出生日期" name="birthday"><DatePicker style={{ width: '100%' }} /></Form.Item></E>
 
           <Typography.Title level={4}>教育经历</Typography.Title>
           <E path="education[0].degree"><Form.Item label="最高学历" name="topDegree"><Select options={opts(['本科', '硕士', '博士', '其他'])} /></Form.Item></E>
-          <E path="education[0].school"><Form.Item label="毕业院校" name="school"><Select showSearch options={opts(SCHOOLS)} placeholder="请输入学校名称搜索" /></Form.Item></E>
+          <E path="education[0].school"><Form.Item label="毕业院校" name="school"><Select showSearch allowClear options={opts(SCHOOLS)} placeholder="请输入学校名称搜索" /></Form.Item></E>
           <E path="education[0].major"><Form.Item label="专业" name="major"><Input /></Form.Item></E>
           <E path="education[0].end"><Form.Item label="毕业时间" name="graduate"><DatePicker picker="month" style={{ width: '100%' }} /></Form.Item></E>
 

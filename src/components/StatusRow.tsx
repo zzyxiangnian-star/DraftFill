@@ -11,16 +11,24 @@ const META: Record<Status, { Icon: typeof Check; tag: string }> = {
   skip: { Icon: CircleMinus, tag: '未填' },
 };
 
-export function StatusRow({ status, name, value, tag }: { status: Status; name: string; value: ReactNode; tag?: string }) {
+export function StatusRow({ status, name, value, tag, onClick }: {
+  status: Status; name: string; value: ReactNode; tag?: string; onClick?: () => void;
+}) {
   const { Icon, tag: defaultTag } = META[status];
-  return (
-    <li className={`status status-${status}`}>
+  const body = (
+    <>
       <Icon {...iconProps} aria-hidden />
       <div>
         <div className="name">{name}</div>
         <div className="val">{value}</div>
       </div>
       <span className="tag">{tag ?? defaultTag}</span>
-    </li>
+    </>
+  );
+  // 可点击时整行是按钮：点一下在网页上定位到这个字段
+  return onClick ? (
+    <li><button type="button" className={`status status-${status} status-btn`} onClick={onClick} title="在页面上定位这个字段">{body}</button></li>
+  ) : (
+    <li className={`status status-${status}`}>{body}</li>
   );
 }

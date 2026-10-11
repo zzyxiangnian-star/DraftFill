@@ -65,13 +65,22 @@ async function run(name: string) {
   const counts = { ok: 0, warn: 0, err: 0, skip: 0 };
   res.report.items.forEach((i) => counts[i.status]++);
   console.log(`${name}: 识别 ${score.correct}/${score.expected}，填写 ${JSON.stringify(counts)}`);
-  await page.close(); // 同一地址只保留一个标签页，避免下一次填到旧页面上
-  return { score, report: res.report, values, submitted };
+  const undo = async () => {
+    const r = await sw.evaluate(async (u) => {
+      const [tab] = await chrome.tabs.query({ url: u });
+      return chrome.tabs.sendMessage(tab!.id!, { type: 'undo' });
+    }, url) as { ok: true; restored: number; failed: string[] };
+    const after = await page.evaluate(() => (window as unknown as { __values?: Record<string, unknown> }).__values ?? null);
+    return { ...r, values: after };
+  };
+  const close = () => page.close(); // 同一地址只保留一个标签页，避免下一次填到旧页面上
+  return { score, report: res.report, values, submitted, undo, close };
 }
 
 for (const name of ['native', 'antd', 'element']) {
   test(`${name}：识别率 ≥ 90%，无错认，填写无失败，不提交`, async () => {
-    const { score, report, submitted } = await run(name);
+    const { score, report, submitted, close } = await run(name);
+    await close();
     expect(score.details.filter((d) => d.got !== 'none')).toEqual([]);
     expect(score.correct / score.expected).toBeGreaterThanOrEqual(0.9);
     expect(report.items.filter((i) => i.status === 'err')).toEqual([]);
@@ -80,17 +89,39 @@ for (const name of ['native', 'antd', 'element']) {
 }
 
 test('antd：组件内部状态同步更新（不只是改了输入框文字）', async () => {
-  const { values } = await run('antd');
+  const { values, close } = await run('antd');
+  await close();
   expect(values).toMatchObject({ name: '王小明', nation: '汉族', political: '共青团员', topDegree: '硕士', school: '北京大学', adjust: '是', gender: '男' });
   expect(values).toHaveProperty('graduate');
   expect(values).not.toHaveProperty('agree', true);
 });
 
 test('element：组件内部状态同步更新', async () => {
-  const { values } = await run('element');
+  const { values, close } = await run('element');
+  await close();
   expect(values).toMatchObject({
     name: '王小明', gender: '男', birth: '2001-05', political: '共青团员', idType: '身份证', degree: '硕士研究生',
     degreeType: '硕士', start: '2024-09', end: '2027-06', rel: '父亲', fname: '王大明', avail: '2027-07-01',
   });
   expect(values).not.toHaveProperty('self');
+});
+
+test('antd：撤销后组件状态清空；清不掉的（无清空按钮的下拉、React 单选）如实报告', async () => {
+  const { undo, close } = await run('antd');
+  const r = await undo();
+  await close();
+  expect(r.failed.sort()).toEqual(['性别', '是否接受调剂', '最高学历'].sort());
+  for (const k of ['name', 'mobile', 'nation', 'political', 'school', 'major', 'graduate', 'birthday', 'desc']) {
+    expect(r.values?.[k] ?? '').toBeFalsy();
+  }
+});
+
+test('element：撤销后组件状态清空；没有清空按钮的下拉如实报告', async () => {
+  const { undo, close } = await run('element');
+  const r = await undo();
+  await close();
+  expect(r.failed).toEqual(['学历']);
+  for (const k of ['name', 'gender', 'birth', 'political', 'nation', 'start', 'end', 'rel', 'fname', 'avail']) {
+    expect(r.values?.[k] ?? '').toBeFalsy();
+  }
 });

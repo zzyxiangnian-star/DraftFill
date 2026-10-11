@@ -1,7 +1,9 @@
-import { ClipboardList, ListChecks } from 'lucide-react';
+import { ClipboardList, ListChecks, Undo2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Logo } from '@/src/components/Logo';
-import { Counts, ItemRow, sortItems } from '@/src/components/Report';
+import { Counts, ItemRow, revealField, sortItems } from '@/src/components/Report';
+import { iconProps } from '@/src/components/icon';
+import type { Request, UndoResult } from '@/src/lib/messages';
 import type { FillReport, FillStatus } from '@/src/lib/fill/fill';
 import { lastReportItem } from '@/src/lib/fill/reportStore';
 
@@ -15,6 +17,27 @@ const GROUPS: { title: string; statuses: FillStatus[] }[] = [
 
 function Result({ report }: { report: FillReport }) {
   const items = sortItems(report.items);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const undone = !!report.undoneAt;
+
+  async function undo() {
+    setBusy(true);
+    try {
+      const r = await browser.runtime.sendMessage<Request, UndoResult>({ type: 'undo-active-tab' });
+      setNotice(!r.ok ? r.reason : r.failed.length
+        ? `已恢复 ${r.restored} 项。${r.failed.join('、')} 没能自动清空，请手动处理。`
+        : `已恢复 ${r.restored} 项，页面回到了填写前的样子。`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reveal(index: number) {
+    const err = await revealField(index);
+    setNotice(err);
+  }
+
   const time = new Date(report.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   return (
     <div className="stack" style={{ gap: 'var(--space-4)' }}>
@@ -22,15 +45,23 @@ function Result({ report }: { report: FillReport }) {
         <div className="label">{time} · 用「{report.profileTitle}」填写</div>
         <h2>{report.title || '网申页面'}</h2>
         <Counts items={report.items} />
-        <p className="small muted">插件没有提交。请对照下面的结果检查页面，确认无误后自己提交。</p>
+        {undone ? (
+          <p className="small muted">这次填写已经撤销，下面的结果只作记录。</p>
+        ) : (
+          <>
+            <p className="small muted">插件没有提交。点下面任意一项可以在页面上定位，检查无误后请自己提交。</p>
+            <div><button className="btn btn-secondary" onClick={undo} disabled={busy}><Undo2 {...iconProps} /> 撤销本次填写</button></div>
+          </>
+        )}
       </section>
+      {notice && <p className="notice small enter" role="status">{notice}</p>}
       {GROUPS.map(({ title, statuses }) => {
         const list = items.filter((i) => statuses.includes(i.status));
         if (!list.length) return null;
         return (
           <section key={title} className="stack">
             <h3 className="group-title">{title} <span className="muted">{list.length}</span></h3>
-            <ul className="report-list">{list.map((item, i) => <ItemRow key={i} item={item} />)}</ul>
+            <ul className="report-list">{list.map((item) => <ItemRow key={item.index} item={item} onReveal={undone ? undefined : reveal} />)}</ul>
           </section>
         );
       })}

@@ -11,6 +11,8 @@ import { parsePath, pathIndexLabel, resolveValue } from './values';
 export type FillStatus = 'ok' | 'warn' | 'err' | 'skip';
 
 export interface FillItem {
+  /** 在本次填写里的序号，用于在页面上定位字段 */
+  index: number;
   label: string;
   path: string | null;
   status: FillStatus;
@@ -25,6 +27,8 @@ export interface FillReport {
   at: number;
   profileTitle: string;
   items: FillItem[];
+  /** 撤销时间；撤销后结果只作记录 */
+  undoneAt?: number;
 }
 
 const SKIP_KIND: Partial<Record<Control['kind'], string>> = {
@@ -61,6 +65,8 @@ function blur(el: HTMLElement) {
   el.blur();
   el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
 }
+
+const PLACEHOLDER_OPTION = /^(请选择|请选择.*|--.*|—.*|选择.*|)$/;
 
 const DATE_PATH = /(\.start|\.end|\.date|birthDate|availableDate)$/;
 
@@ -110,7 +116,7 @@ async function fillText(c: Control, value: string, sure: boolean, isDate: boolea
 
 async function fillNativeSelect(c: Control, value: string, sure: boolean): Promise<Outcome> {
   const el = c.el as HTMLSelectElement;
-  const opts = [...el.options].filter((o) => !/^(请选择|--|—)/.test(o.text.trim()) && o.value !== '');
+  const opts = [...el.options].filter((o) => !PLACEHOLDER_OPTION.test(o.text.trim()) && o.value !== '');
   const r = chooseOption(value, opts.map((o) => o.text));
   if (!r.ok) return skip(r.reason);
   const opt = opts[r.index]!;
@@ -272,7 +278,12 @@ async function fillPicker(c: Control, value: string, sure: boolean): Promise<Out
 function currentValue(c: Control): string {
   switch (c.kind) {
     case 'text': case 'textarea': case 'date': case 'month': return (c.el as HTMLInputElement).value;
-    case 'select': return (c.el as HTMLSelectElement).value;
+    case 'select': {
+      // “请选择”这类占位选项算空
+      const sel = c.el as HTMLSelectElement;
+      const opt = sel.selectedOptions[0];
+      return !opt || !opt.value || PLACEHOLDER_OPTION.test(opt.text.trim()) ? '' : opt.text;
+    }
     case 'radio': return c.radios?.some((r) => r.checked) ? 'checked' : '';
     case 'antd-select': return ANTD.selected(c.el);
     case 'el-select': return ELEMENT.selected(c.el);
@@ -319,23 +330,122 @@ export function planFill(doc: Document, profile: Profile): PlannedField[] {
   });
 }
 
-export async function fillDocument(doc: Document, profile: Profile): Promise<FillReport> {
-  const items: FillItem[] = [];
+// 高风险字段：填错后果大、各站写法差异大，填上也标黄请用户核对（计划书 M8）
+const HIGH_RISK = /^basic\.(nativePlace|hukou|idNumber|birthDate)$|^education\[\d*\]\.degree$/;
+
+export interface FillEntry {
+  control: Control;
+  item: FillItem;
+  /** 写入前的原值，撤销时恢复 */
+  original: string;
+  written: boolean;
+}
+
+export interface FillRun {
+  report: FillReport;
+  entries: FillEntry[];
+}
+
+function originalValue(c: Control): string {
+  if (c.kind === 'select') return (c.el as HTMLSelectElement).value;
+  if (c.kind === 'radio') return String(c.radios?.findIndex((r) => r.checked) ?? -1);
+  return currentValue(c);
+}
+
+export async function runFill(doc: Document, profile: Profile): Promise<FillRun> {
+  const entries: FillEntry[] = [];
   for (const f of planFill(doc, profile)) {
+    const index = entries.length;
     const label = describe(f.control) + (f.path ? (pathIndexLabel(f.path, f.index) ? `（${pathIndexLabel(f.path, f.index)}）` : '') : '');
-    if (!f.path) { items.push({ label, path: null, status: 'skip', value: '', note: f.reason }); continue; }
+    const add = (item: Omit<FillItem, 'index' | 'label'>, written = false, original = '') =>
+      entries.push({ control: f.control, item: { index, label, ...item }, original, written });
+
+    if (!f.path) { add({ path: null, status: 'skip', value: '', note: f.reason }); continue; }
     const v = resolveValue(profile, f.path, f.index);
-    if (v.value === null) { items.push({ label, path: f.path, status: 'skip', value: '', note: v.reason }); continue; }
-    if (currentValue(f.control).trim()) {
-      items.push({ label, path: f.path, status: 'skip', value: '', note: '页面上已经有内容，没有覆盖' });
-      continue;
-    }
+    if (v.value === null) { add({ path: f.path, status: 'skip', value: '', note: v.reason }); continue; }
+    if (currentValue(f.control).trim()) { add({ path: f.path, status: 'skip', value: '', note: '页面上已经有内容，没有覆盖' }); continue; }
+    const original = originalValue(f.control);
     try {
-      const o = await write(f.control, f.path, v.value, f.sure);
-      items.push({ label, path: f.path, ...o });
+      let o = await write(f.control, f.path, v.value, f.sure);
+      if (o.status === 'ok' && HIGH_RISK.test(f.path)) o = { ...o, status: 'warn', note: '重要信息，请核对' };
+      add({ path: f.path, ...o }, o.status !== 'skip', original);
     } catch (e) {
-      items.push({ label, path: f.path, status: 'err', value: '', note: e instanceof SafetyError ? e.message : `填写出错：${String(e)}` });
+      add({ path: f.path, status: 'err', value: '', note: e instanceof SafetyError ? e.message : `填写出错：${String(e)}` }, true, original);
     }
   }
-  return { url: doc.location?.href ?? '', title: doc.title, at: Date.now(), profileTitle: profile.title, items };
+  const report = { url: doc.location?.href ?? '', title: doc.title, at: Date.now(), profileTitle: profile.title, items: entries.map((e) => e.item) };
+  return { report, entries };
+}
+
+export async function fillDocument(doc: Document, profile: Profile): Promise<FillReport> {
+  return (await runFill(doc, profile)).report;
+}
+
+// —— 撤销（计划书 M9）：把本次写过的字段恢复成填写前的样子 ——
+
+function hover(el: Element) {
+  for (const type of ['pointerenter', 'mouseenter', 'mouseover'] as const) {
+    el.dispatchEvent(new MouseEvent(type, { bubbles: type === 'mouseover' }));
+  }
+}
+
+async function clickClear(root: HTMLElement, selector: string): Promise<boolean> {
+  hover(root);
+  root.querySelectorAll('*').forEach((n) => n.matches('.el-select__wrapper, .el-input__wrapper, .ant-select-selector') && hover(n));
+  await sleep(30);
+  const btn = await waitFor(() => root.querySelector<HTMLElement>(selector), 300);
+  if (!btn) return false;
+  safeMouseDown(btn);
+  btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  safeClick(btn);
+  await sleep(50);
+  return true;
+}
+
+async function restore(e: FillEntry): Promise<boolean> {
+  const c = e.control;
+  switch (c.kind) {
+    case 'text': case 'textarea': case 'date': case 'month': case 'select': {
+      const el = c.el as HTMLInputElement;
+      setNativeValue(el, e.original);
+      blur(el);
+      return el.value === e.original;
+    }
+    case 'radio': {
+      const radios = c.radios ?? [];
+      const was = Number(e.original);
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'checked')?.set;
+      radios.forEach((r, i) => {
+        setter?.call(r, i === was);
+        r.dispatchEvent(new Event('click', { bubbles: true }));
+        r.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await sleep(0);
+      return radios.every((r, i) => r.checked === (i === was));
+    }
+    case 'antd-select':
+      return (await clickClear(c.el, '.ant-select-clear')) && !ANTD.selected(c.el);
+    case 'el-select':
+      return (await clickClear(c.el, '.el-select__clear')) && !ELEMENT.selected(c.el);
+    case 'antd-picker':
+      return (await clickClear(c.el, '.ant-picker-clear')) && !c.el.querySelector('input')?.value;
+    case 'el-picker':
+      return (await clickClear(c.el, '.el-input__clear, .el-range__close-icon, .clear-icon')) && !c.el.querySelector('input')?.value;
+    default:
+      return false;
+  }
+}
+
+export async function undoFill(entries: FillEntry[]): Promise<{ restored: number; failed: string[] }> {
+  let restored = 0;
+  const failed: string[] = [];
+  for (const e of entries) {
+    if (!e.written) continue;
+    try {
+      if (await restore(e)) restored++; else failed.push(e.item.label);
+    } catch {
+      failed.push(e.item.label);
+    }
+  }
+  return { restored, failed };
 }
