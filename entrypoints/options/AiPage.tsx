@@ -1,0 +1,340 @@
+import { Check, ClipboardCopy, Loader2, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { useRef, useState, type ReactNode } from 'react';
+import { iconProps } from '@/src/components/icon';
+import { providerById } from '@/src/lib/ai/providers';
+import { NOT_SENT_LABEL, resumeForAi, scrub, SENT_LABEL } from '@/src/lib/ai/redact';
+import { runSkill } from '@/src/lib/ai/run';
+import { diagnoseSkill, type DiagnoseResult } from '@/src/lib/ai/skills/diagnose';
+import { jdMatchSkill, type JdResult } from '@/src/lib/ai/skills/jdMatch';
+import { openQuestionSkill, type OpenQResult } from '@/src/lib/ai/skills/openQuestion';
+import { polishSkill, type PolishResult } from '@/src/lib/ai/skills/polish';
+import type { Profile, ProfileStore } from '@/src/lib/profile/schema';
+import { updateProfile } from '@/src/lib/profile/store';
+import { AiSettingsCard, ensureAccess, useAiSettings } from './AiSettingsCard';
+import { AskAi } from './AskAi';
+
+type Tool = 'ask' | 'diagnose' | 'polish' | 'jd' | 'question';
+const TOOLS: { id: Tool; label: string; desc: string }[] = [
+  { id: 'ask', label: '问 AI', desc: '求职上的任何问题都可以问：简历、面试、网申问答题、笔试、offer、邮件……插件会自动挑最合适的技能来回答。' },
+  { id: 'diagnose', label: '简历诊断', desc: '按 HR 初筛的标准逐条检查，告诉你最该改的地方，以及面试官可能追问什么。' },
+  { id: 'polish', label: '经历润色', desc: '按 STAR 法则改写实习、项目、校园经历的描述。只改写法，不编造数字和经历，满意可以一键写回档案。' },
+  { id: 'jd', label: '岗位分析', desc: '粘贴岗位描述，拆出硬性要求和关键词，逐条对照你的经历，看哪段该突出、缺什么。' },
+  { id: 'question', label: '开放题写作', desc: '网申里的问答题（为什么选择我们、最有成就感的事……），按题型写 3 个版本，严格控制字数。' },
+];
+
+/** 运行一个技能：先申请访问权限（必须是点击后的第一个 await），再调用 */
+function useRunner() {
+  const settings = useAiSettings();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ctl = useRef<AbortController | null>(null);
+  async function run<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T | null> {
+    if (!settings) return null;
+    const denied = await ensureAccess(settings);
+    if (denied) { setError(denied); return null; }
+    setBusy(true);
+    setError(null);
+    ctl.current = new AbortController();
+    try {
+      return await fn(ctl.current.signal);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+  const ready = !!settings?.apiKey.trim();
+  const provider = providerById(settings?.provider ?? '')?.name ?? 'AI 服务商';
+  return { run, busy, error, ready, provider, cancel: () => ctl.current?.abort() };
+}
+
+function Privacy({ provider, extra }: { provider: string; extra?: string }) {
+  return (
+    <p className="privacy small">
+      <ShieldCheck {...iconProps} aria-hidden />
+      <span>会把你的{SENT_LABEL}{extra ? `，以及${extra}` : ''}发给 {provider}。不会发送{NOT_SENT_LABEL}。</span>
+    </p>
+  );
+}
+
+function RunButton({ r, label, onClick, disabled }: { r: ReturnType<typeof useRunner>; label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <div className="row" style={{ flexWrap: 'wrap' }}>
+      <button className="btn btn-primary" onClick={onClick} disabled={r.busy || !r.ready || disabled}>
+        {r.busy ? <Loader2 {...iconProps} className="spin" /> : <Sparkles {...iconProps} />} {r.busy ? 'AI 正在写…' : label}</button>
+      {r.busy && <button className="btn btn-text" onClick={r.cancel}><X {...iconProps} /> 取消</button>}
+      {!r.ready && <span className="small muted">先在上面填好 API Key。</span>}
+    </div>
+  );
+}
+
+const ErrorLine = ({ text }: { text: string | null }) => (text ? <div className="notice notice-err enter" role="alert">{text}</div> : null);
+
+function Copy({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button className="btn btn-text small" onClick={async () => { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500); }}>
+      {done ? <Check {...iconProps} /> : <ClipboardCopy {...iconProps} />} {done ? '已复制' : '复制'}</button>
+  );
+}
+
+function Score({ value, label }: { value: number | null; label: string }) {
+  if (value === null) return null;
+  const tone = value >= 80 ? 'good' : value >= 60 ? 'mid' : 'low';
+  return <div className={`score score-${tone}`}><strong>{value}</strong><span>{label}</span></div>;
+}
+
+function List({ title, items, children }: { title: string; items: unknown[]; children: ReactNode }) {
+  if (!items.length) return null;
+  return <div className="ai-list"><h3>{title}</h3>{children}</div>;
+}
+
+// —— 简历诊断 ——
+function Diagnose({ profile }: { profile: Profile }) {
+  const r = useRunner();
+  const [target, setTarget] = useState(profile.intention.positions);
+  const [res, setRes] = useState<DiagnoseResult | null>(null);
+  const go = () => r.run((signal) => runSkill(diagnoseSkill, { resume: resumeForAi(profile), target: scrub(target) }, signal)).then((x) => x && setRes(x));
+  return (
+    <div className="stack" style={{ gap: 'var(--space-4)' }}>
+      <label className="field">
+        <span className="field-label">目标岗位（可不填）</span>
+        <input className="input" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="如：产品运营" />
+      </label>
+      <Privacy provider={r.provider} />
+      <RunButton r={r} label="开始诊断" onClick={go} />
+      <ErrorLine text={r.error} />
+      {res && (
+        <div className="ai-result enter">
+          <div className="scores">
+            <Score value={res.score} label="初筛通过可能性" />
+            {res.scores.map((s) => <Score key={s.name} value={s.score} label={s.name} />)}
+          </div>
+          {res.summary && <p>{res.summary}</p>}
+          <List title="亮点" items={res.strengths}><ul>{res.strengths.map((x) => <li key={x}>{x}</li>)}</ul></List>
+          <List title="最该改的地方" items={res.issues}>
+            <ul className="issues">
+              {res.issues.map((x, i) => (
+                <li key={i}>
+                  <span className={`level level-${x.level}`}>{x.level}</span>
+                  <div><strong>{x.where ? `${x.where}：` : ''}{x.problem}</strong><p className="muted">{x.fix}</p></div>
+                </li>
+              ))}
+            </ul>
+          </List>
+          <List title="建议补充" items={res.missing}><ul>{res.missing.map((x) => <li key={x}>{x}</li>)}</ul></List>
+          <List title="面试官可能会追问" items={res.followUps}><ul>{res.followUps.map((x) => <li key={x}>{x}</li>)}</ul></List>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// —— 经历润色 ——
+type Exp = { key: string; kind: '实习' | '项目' | '校园经历'; title: string; role: string; description: string; apply: (p: Profile, text: string) => Profile };
+
+function experiencesOf(p: Profile): Exp[] {
+  return [
+    ...p.internships.map((x, i): Exp => ({ key: `i${x.id}`, kind: '实习', title: x.company || `实习 ${i + 1}`, role: x.title, description: x.description,
+      apply: (q, text) => ({ ...q, internships: q.internships.map((y) => (y.id === x.id ? { ...y, description: text } : y)) }) })),
+    ...p.projects.map((x, i): Exp => ({ key: `p${x.id}`, kind: '项目', title: x.name || `项目 ${i + 1}`, role: x.role, description: x.description,
+      apply: (q, text) => ({ ...q, projects: q.projects.map((y) => (y.id === x.id ? { ...y, description: text } : y)) }) })),
+    ...p.campus.map((x, i): Exp => ({ key: `c${x.id}`, kind: '校园经历', title: x.organization || `校园经历 ${i + 1}`, role: x.role, description: x.description,
+      apply: (q, text) => ({ ...q, campus: q.campus.map((y) => (y.id === x.id ? { ...y, description: text } : y)) }) })),
+  ];
+}
+
+function PolishOne({ exp, profile, onApply }: { exp: Exp; profile: Profile; onApply: (text: string) => void }) {
+  const r = useRunner();
+  const [res, setRes] = useState<PolishResult | null>(null);
+  const [applied, setApplied] = useState<string | null>(null);
+  const go = () => r.run((signal) => runSkill(polishSkill, {
+    kind: exp.kind, title: scrub(exp.title, profile), role: scrub(exp.role, profile), description: scrub(exp.description, profile),
+    target: scrub(profile.intention.positions, profile),
+  }, signal)).then((x) => { if (x) { setRes(x); setApplied(null); } });
+  return (
+    <li className="polish-item">
+      <div className="polish-head">
+        <div><strong>{exp.title}</strong> <span className="muted small">{exp.kind}{exp.role ? ` · ${exp.role}` : ''}</span></div>
+        <button className="btn btn-secondary" onClick={go} disabled={r.busy || !r.ready || !exp.description.trim()}>
+          {r.busy ? <Loader2 {...iconProps} className="spin" /> : <Sparkles {...iconProps} />} {res ? '再润色一次' : '润色'}</button>
+      </div>
+      {!exp.description.trim() ? <p className="small muted">这段经历还没写描述，先在档案里写几句做了什么。</p>
+        : <p className="small muted polish-orig">{exp.description}</p>}
+      <ErrorLine text={r.error} />
+      {res && (
+        <div className="polish-versions enter">
+          {res.versions.map((v) => (
+            <div key={v.style} className="polish-version">
+              <div className="row"><span className="label">{v.style}</span><span className="spacer" /><Copy text={v.text} />
+                <button className="btn btn-text small" disabled={applied === v.text} onClick={() => { onApply(v.text); setApplied(v.text); }}>
+                  <Check {...iconProps} /> {applied === v.text ? '已写回档案' : '写回档案'}</button></div>
+              <p className="pre">{v.text}</p>
+            </div>
+          ))}
+          {res.tips.length > 0 && <div className="ai-list"><h3>还可以补充</h3><ul>{res.tips.map((t) => <li key={t}>{t}</li>)}</ul></div>}
+          <p className="small muted">【待补充】的地方请换成真实情况，没有就删掉，不要编。</p>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function Polish({ profile, store, commit }: { profile: Profile; store: ProfileStore; commit: (s: ProfileStore, immediate?: boolean) => void }) {
+  const exps = experiencesOf(profile);
+  const r = useRunner();
+  if (!exps.length) return <p className="muted">档案里还没有实习、项目或校园经历。</p>;
+  return (
+    <div className="stack" style={{ gap: 'var(--space-4)' }}>
+      <Privacy provider={r.provider} extra="要润色的那一段描述" />
+      <ul className="polish-list">
+        {exps.map((e) => (
+          <PolishOne key={e.key} exp={e} profile={profile} onApply={(text) => {
+            const latest = store.profiles.find((p) => p.id === profile.id) ?? profile;
+            commit(updateProfile(store, e.apply(latest, text)), true);
+          }} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// —— 岗位分析 ——
+const STATUS_TONE = { 已覆盖: 'good', 弱覆盖: 'mid', 未覆盖: 'low' } as const;
+
+function JdMatch({ profile }: { profile: Profile }) {
+  const r = useRunner();
+  const [jd, setJd] = useState('');
+  const [res, setRes] = useState<JdResult | null>(null);
+  const go = () => r.run((signal) => runSkill(jdMatchSkill, { jd: scrub(jd, profile), resume: resumeForAi(profile) }, signal)).then((x) => x && setRes(x));
+  return (
+    <div className="stack" style={{ gap: 'var(--space-4)' }}>
+      <label className="field">
+        <span className="field-label">岗位描述（JD）</span>
+        <textarea className="input textarea" rows={8} value={jd} onChange={(e) => setJd(e.target.value)}
+          placeholder="把招聘页上的岗位职责、任职要求整段复制过来" />
+      </label>
+      <Privacy provider={r.provider} extra="这段岗位描述" />
+      <RunButton r={r} label="开始分析" onClick={go} disabled={jd.trim().length < 20} />
+      <ErrorLine text={r.error} />
+      {res && (
+        <div className="ai-result enter">
+          <div className="scores"><Score value={res.score} label={res.position ? `与「${res.position}」的匹配度` : '匹配度'} /></div>
+          {res.summary && <p>{res.summary}</p>}
+          <List title="可能直接被筛掉的地方" items={res.risks}><ul className="risks">{res.risks.map((x) => <li key={x}>{x}</li>)}</ul></List>
+          <List title="逐条对照" items={res.requirements}>
+            <ul className="reqs">
+              {res.requirements.map((x, i) => (
+                <li key={i}>
+                  <span className={`tag tag-${STATUS_TONE[x.status]}`}>{x.status}</span>
+                  <div><strong>{x.item}</strong> <span className="muted small">{x.kind}</span><p className="muted small">{x.evidence}</p></div>
+                </li>
+              ))}
+            </ul>
+          </List>
+          <List title="JD 关键词" items={res.keywords}><div className="chips">{res.keywords.map((k) => <span key={k} className="kw">{k}</span>)}</div></List>
+          <List title="简历里缺的关键词" items={res.missingKeywords}><div className="chips">{res.missingKeywords.map((k) => <span key={k} className="kw kw-miss">{k}</span>)}</div></List>
+          <List title="最该突出的经历" items={res.highlight}><ul>{res.highlight.map((h) => <li key={h.experience}><strong>{h.experience}</strong>：{h.why}</li>)}</ul></List>
+          <List title="修改建议" items={res.suggestions}><ol>{res.suggestions.map((x) => <li key={x}>{x}</li>)}</ol></List>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// —— 开放题 ——
+function OpenQuestion({ profile }: { profile: Profile }) {
+  const r = useRunner();
+  const [question, setQuestion] = useState('');
+  const [limit, setLimit] = useState('500');
+  const [company, setCompany] = useState('');
+  const [jd, setJd] = useState('');
+  const [res, setRes] = useState<OpenQResult | null>(null);
+  const go = () => r.run((signal) => runSkill(openQuestionSkill, {
+    question: scrub(question, profile), limit: Number(limit) || 0, company: scrub(company, profile), jd: scrub(jd, profile), resume: resumeForAi(profile),
+  }, signal)).then((x) => x && setRes(x));
+  return (
+    <div className="stack" style={{ gap: 'var(--space-4)' }}>
+      <label className="field">
+        <span className="field-label">题目</span>
+        <textarea className="input textarea" rows={3} value={question} onChange={(e) => setQuestion(e.target.value)}
+          placeholder="如：请描述一次你遇到困难并最终解决的经历" />
+      </label>
+      <div className="grid ai-grid">
+        <label className="field">
+          <span className="field-label">字数上限</span>
+          <input className="input" inputMode="numeric" value={limit} onChange={(e) => setLimit(e.target.value.replace(/\D/g, ''))} placeholder="不限就留空" />
+        </label>
+        <label className="field">
+          <span className="field-label">公司和岗位（可不填）</span>
+          <input className="input" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="如：转转 · 产品运营" />
+        </label>
+      </div>
+      <label className="field">
+        <span className="field-label">岗位描述（可不填，填了写得更贴合）</span>
+        <textarea className="input textarea" rows={4} value={jd} onChange={(e) => setJd(e.target.value)} />
+      </label>
+      <Privacy provider={r.provider} extra="题目和岗位信息" />
+      <RunButton r={r} label="写 3 个版本" onClick={go} disabled={question.trim().length < 4} />
+      <ErrorLine text={r.error} />
+      {res && (
+        <div className="ai-result enter">
+          {(res.type || res.plan) && <p><span className="tag tag-mid">{res.type || '题型'}</span> {res.plan}</p>}
+          {res.versions.map((v, i) => (
+            <div key={i} className="polish-version">
+              <div className="row">
+                <span className="label">版本 {i + 1}{v.angle ? ` · ${v.angle}` : ''}</span><span className="spacer" />
+                <span className={`small ${v.over ? 'text-err' : 'muted'}`}>{v.chars}{Number(limit) ? ` / ${limit}` : ''} 字{v.over ? '，超出上限' : ''}</span>
+                <Copy text={v.text} />
+              </div>
+              <p className="pre">{v.text}</p>
+            </div>
+          ))}
+          <p className="small muted">AI 写的是草稿：请对照真实经历修改，换成你自己的说法再提交。</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function AiPage({ store, commit }: { store: ProfileStore; commit: (s: ProfileStore, immediate?: boolean) => void }) {
+  const [tool, setTool] = useState<Tool>('ask');
+  const [profileId, setProfileId] = useState(store.activeId);
+  const profile = store.profiles.find((p) => p.id === profileId) ?? store.profiles[0];
+  const meta = TOOLS.find((t) => t.id === tool)!;
+  return (
+    <>
+      <div className="stack">
+        <h1>AI 助手</h1>
+        <p className="muted">诊断和润色简历、分析岗位、写网申问答题。每个功能都配了专门的方法，只依据你档案里的真实经历，不编造。</p>
+      </div>
+      <AiSettingsCard />
+      {!profile ? <p className="muted">还没有档案，先建一份。</p> : (
+        <section className="card-plain stack" style={{ gap: 'var(--space-4)' }}>
+          <div className="row" style={{ flexWrap: 'wrap' }}>
+            <div className="seg" role="tablist" aria-label="AI 功能">
+              {TOOLS.map((t) => (
+                <button key={t.id} role="tab" className="seg-item" aria-selected={tool === t.id} onClick={() => setTool(t.id)}>{t.label}</button>
+              ))}
+            </div>
+            <span className="spacer" />
+            {store.profiles.length > 1 && (
+              <select className="input select profile-pick" aria-label="用哪份档案" value={profile.id} onChange={(e) => setProfileId(e.target.value)}>
+                {store.profiles.map((p) => <option key={p.id} value={p.id}>{p.title || '未命名档案'}</option>)}
+              </select>
+            )}
+          </div>
+          <p className="small muted">{meta.desc}</p>
+          <div key={`${tool}-${profile.id}`}>
+            {tool === 'ask' ? <AskAi profile={profile} />
+              : tool === 'diagnose' ? <Diagnose profile={profile} />
+              : tool === 'polish' ? <Polish profile={profile} store={store} commit={commit} />
+              : tool === 'jd' ? <JdMatch profile={profile} />
+              : <OpenQuestion profile={profile} />}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}

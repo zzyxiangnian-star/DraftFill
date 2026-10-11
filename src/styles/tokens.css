@@ -54,10 +54,10 @@
   --fs-label: 12px;
 
   /* 圆角 */
-  --radius-xs: 6px;
-  --radius-sm: 8px;            /* 次按钮、输入框 */
-  --radius-md: 16px;           /* 卡片 */
-  --radius-lg: 24px;           /* 大面板、弹层 */
+  --radius-xs: 8px;
+  --radius-sm: 12px;           /* 次按钮、输入框 */
+  --radius-md: 20px;           /* 卡片 */
+  --radius-lg: 28px;           /* 大面板、弹层 */
   --radius-pill: 9999px;       /* 主按钮、标签 */
 
   /* 间距（4px 基准） */

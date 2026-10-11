@@ -18,9 +18,31 @@ const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.j
 let ctx: BrowserContext;
 let sw: Worker;
 let server: http.Server;
+const aiRequests: string[] = [];
+
+function fakeAnswer(body: string): string {
+  const sys: string = JSON.parse(body).messages[0].content;
+  if (sys.includes('你是一个分类器')) return '{"skill":"general"}';
+  if (sys.includes('"followUps"')) {
+    return JSON.stringify({ score: 72, scores: [{ name: '可信度', score: 80 }], summary: '经历扎实，结果写得不够。', strengths: ['有大厂相关实习'],
+      issues: [{ level: '高', where: '实习经历', problem: '没有量化结果', fix: '写清压测把接口延迟降低了多少' }], missing: [], followUps: ['压测是怎么做的'] });
+  }
+  return '### 1 分钟自我介绍\n\n面试官您好，我是**计算机技术**专业的硕士生。\n\n- 在示例科技做过后端开发实习\n- 负责订单服务接口开发';
+}
 
 test.beforeAll(async () => {
   server = http.createServer((req, res) => {
+    // 假的 AI 服务商：记下收到的请求，按系统提示词返回固定内容
+    if (req.url?.startsWith('/v1/')) {
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        aiRequests.push(body);
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ choices: [{ message: { content: fakeAnswer(body) } }] }));
+      });
+      return;
+    }
     const f = join(DIST, decodeURIComponent((req.url ?? '/').split('?')[0]!));
     if (!f.startsWith(DIST) || !existsSync(f)) { res.statusCode = 404; res.end(); return; }
     res.setHeader('content-type', TYPES[extname(f)] ?? 'application/octet-stream');
@@ -212,4 +234,47 @@ test('多步表单：同源 iframe、shadow DOM 里的字段也能填；必填�
   expect(submitted).toBe(false);
   expect(await page.evaluate(() => (window as unknown as { __submitted?: boolean }).__submitted ?? false)).toBe(false);
   await close();
+});
+
+test('AI 助手：问问题自动选技能；简历诊断按格式展示；发出去的内容不含个人信息', async () => {
+  aiRequests.length = 0;
+  await sw.evaluate((port) => chrome.storage.local.set({ aiSettings: { provider: 'custom', apiKey: 'test-key', model: 'fake', baseUrl: `http://localhost:${port}/v1` } }), PORT);
+  const id = new URL(sw.url()).host;
+  const page = await ctx.newPage();
+  await page.setViewportSize({ width: 1180, height: 1100 });
+  await page.goto(`chrome-extension://${id}/options.html#ai`);
+  await page.getByPlaceholder(/输入问题/).fill('帮我写一个 1 分钟面试自我介绍');
+  await page.getByRole('button', { name: '发送' }).click();
+  await expect(page.locator('.skill-tag')).toContainText('自我介绍 · 自动选择');
+  await expect(page.locator('.bubble-assistant h4')).toHaveText('1 分钟自我介绍');
+  if (process.env.SHOT_AI) await page.screenshot({ path: process.env.SHOT_AI, fullPage: true });
+
+  await page.getByRole('tab', { name: '简历诊断' }).click();
+  await page.getByRole('button', { name: '开始诊断' }).click();
+  await expect(page.locator('.score').first()).toContainText('72');
+  await expect(page.getByText('没有量化结果')).toBeVisible();
+  await expect(page.getByText('压测是怎么做的')).toBeVisible();
+
+  const p = sampleProfile();
+  const sent = aiRequests.join('\n');
+  expect(aiRequests.length).toBe(2); // 关键词选中技能，不用再问模型
+  for (const x of [p.basic.name, p.basic.phone, p.basic.email, p.basic.idNumber, '王大明']) expect(sent).not.toContain(x);
+  expect(sent).toContain('示例科技');
+  await page.close();
+});
+
+test('导出简历：只导出勾选的内容，不含身份证号和家庭成员', async () => {
+  const id = new URL(sw.url()).host;
+  const page = await ctx.newPage();
+  await page.setViewportSize({ width: 1180, height: 1200 });
+  await page.goto(`chrome-extension://${id}/resume.html`);
+  const p = sampleProfile();
+  await expect(page.locator('.rs-head h1')).toHaveText(p.basic.name);
+  const paper = page.locator('.rs-paper');
+  await expect(paper).toContainText('北京大学');
+  for (const x of [p.basic.idNumber, '王大明', p.basic.hukou]) if (x) await expect(paper).not.toContainText(x);
+  await page.getByRole('switch', { name: /项目经历/ }).uncheck({ force: true });
+  await expect(paper).not.toContainText('校园二手交易平台');
+  if (process.env.SHOT_RESUME) await page.screenshot({ path: process.env.SHOT_RESUME });
+  await page.close();
 });

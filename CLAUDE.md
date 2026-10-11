@@ -24,5 +24,5 @@
 - 填写：src/lib/fill。流水线 detect → match → values → fill（写入后回读）。所有程序化点击必须走 safety.ts 的 safeClick/safeMouseDown。新增叫法改 aliases.ts，并在 tests/fixtures/forms 的测试表单里加对应字段（data-expect 标正确答案）。
 - 识别原则：认不准就不填（返回原因），宁可漏认不可认错；“认错”和“不该填却认出”在测试里必须为 0。
 - 与界面无关的逻辑放 src/lib，配 tests/ 下的 Vitest 测试。
-- 样式只用 tokens.css 变量；主操作用黑色胶囊按钮（.btn-primary），其余 8px 圆角；图标用 lucide-react，描边 1.5px。
+- 样式只用 tokens.css 变量；主操作用黑色胶囊按钮（.btn-primary），其余 12px 圆角（2026-10-11 用户要求更圆润，卡片 20px）；图标用 lucide-react，描边 1.5px。
 - 动效只表达状态变化和面板出现，缓动 var(--ease)，尊重 prefers-reduced-motion。

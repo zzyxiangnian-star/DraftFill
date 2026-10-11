@@ -1,4 +1,4 @@
-import { Download, Upload } from 'lucide-react';
+import { Download, FileText, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { iconProps } from '@/src/components/icon';
 import { backupFileName, exportBackup, parseBackup } from '@/src/lib/profile/io';
@@ -64,6 +64,14 @@ export function BackupPage({ store, commit, onCreated }: {
       </div>
 
       <ResumeImport store={store} commit={commit} onCreated={onCreated} />
+
+      <section className="card stack" style={{ gap: 'var(--space-3)' }}>
+        <h2>导出为简历</h2>
+        <p className="small muted">把档案排成一页简历，可以选导出哪些部分，存成 PDF 或复制成文字。身份证号、籍贯、户口、家庭成员等网申专用信息不会导出。</p>
+        <div><button className="btn btn-primary" disabled={!store.profiles.length}
+          onClick={() => browser.tabs.create({ url: browser.runtime.getURL(`/resume.html?profile=${encodeURIComponent(store.activeId)}`) })}>
+          <FileText {...iconProps} /> 导出为简历</button></div>
+      </section>
 
       <section className="card stack" style={{ gap: 'var(--space-3)' }}>
         <h2>导出备份</h2>

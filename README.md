@@ -13,6 +13,8 @@ Edge / Chrome 浏览器插件：在国内校招、社招网申页面一键填写
 - **一键填写**：在网申页点插件图标 →「一键填充」。已适配北森、Moka，也能处理常见的原生表单、Ant Design、Element Plus 页面。
 - **填写结果**：侧边栏逐项列出已填、需要确认、不一致和没填的字段及原因；点一项在页面上定位；可一键撤销。
 - **投递看板**：自己提交后记一条（公司、岗位、链接、所用档案），状态可改为笔试、面试、offer 等，可导出 Excel 能打开的表格。
+- **导出为简历**：把档案排成一页简历，选导出哪些部分，存成 PDF 或复制文字。身份证号、籍贯、家庭成员等不会导出。
+- **AI 助手**：选一家国内大模型（DeepSeek、通义千问、智谱、Kimi、豆包、硅基流动），只填 API Key。可以简历诊断、经历润色、岗位分析、写网申问答题，或者直接「问 AI」，插件自动挑合适的技能回答。见 [docs/AI技能清单.md](docs/AI技能清单.md)。
 - **备份**：档案和投递记录导出成一个文件，换电脑时导入。
 
 ## 同学安装（不用写代码）
@@ -82,7 +84,8 @@ npm run demo         # 重新生成 docs/demo.gif（需要 ffmpeg）
 entrypoints/
   popup/        点击工具栏图标弹出：识别当前页、切换档案
   sidepanel/    侧边栏：填写结果、投递看板
-  options/      档案编辑、从简历或备份导入、导出、AI 设置
+  options/      档案编辑、从简历或备份导入、导出、AI 助手
+  resume/       导出简历（A4 预览、打印成 PDF）
   background.ts 用户点击后把 content script 注入当前页，转发消息
   content.ts    在网申页面里扫描、填写（运行时注入，不常驻）
 src/
@@ -90,6 +93,7 @@ src/
   lib/fill/     字段识别（detect）、词典（aliases）、匹配（match）、填写回读与撤销（fill）、页面标色（marks）、只填不交（safety）
   lib/resume/   简历读文字（extract：pdf.js / mammoth）、按行拼接（lines）、识别成档案（parse）
   lib/tracker/  投递看板记录、CSV 导出、从页面猜公司和岗位
+  lib/ai/       服务商、调用、去敏、技能（skills/、chatSkills）、自动选技能（router）
   lib/          其他与界面无关的逻辑
   components/   共用 React 组件
   styles/       tokens.css（设计规范的唯一来源）+ base.css
@@ -104,6 +108,7 @@ docs/PLAN.md    完整计划书
 - 宁可不填，不填错；写入后回读校验。
 - 档案只存在本机浏览器；只申请 `activeTab`，不申请"读取所有网站"。
 - 不识别、不绕过验证码和风控，不保存网站账号密码。
+- AI 功能由你点击才调用，只请求你选的那一家服务商；发送前去掉姓名、电话、邮箱、身份证号、家庭成员等个人信息。
 
 ## 许可
 

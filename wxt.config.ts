@@ -7,6 +7,11 @@ export default defineConfig({
     name: '网申助手',
     description: '在网申页面一键填写个人档案，只填不交，填完由你检查后自己提交。',
     permissions: ['activeTab', 'scripting', 'storage', 'sidePanel'],
+    // AI 服务商的接口：用户在设置页点“保存”时才申请对应的那一个网站，安装时不申请
+    optional_host_permissions: [
+      'https://api.deepseek.com/*', 'https://dashscope.aliyuncs.com/*', 'https://open.bigmodel.cn/*', 'https://api.moonshot.cn/*',
+      'https://ark.cn-beijing.volces.com/*', 'https://api.siliconflow.cn/*', 'https://*/*', 'http://localhost/*', 'http://127.0.0.1/*',
+    ],
     action: { default_title: '网申助手' },
   },
 });

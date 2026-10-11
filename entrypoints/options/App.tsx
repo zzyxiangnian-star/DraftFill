@@ -1,8 +1,9 @@
-import { FileJson, KeyRound, ShieldCheck, UserRound } from 'lucide-react';
+import { FileJson, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Logo } from '@/src/components/Logo';
 import { iconProps } from '@/src/components/icon';
 import { useProfileStore } from '@/src/lib/profile/useProfileStore';
+import { AiPage } from './AiPage';
 import { BackupPage } from './BackupPage';
 import { SECTIONS } from './ProfileEditor';
 import { ProfilePage } from './ProfilePage';
@@ -10,7 +11,7 @@ import { ProfilePage } from './ProfilePage';
 const PAGES = [
   { id: 'profile', label: '个人档案', Icon: UserRound },
   { id: 'backup', label: '导入（简历/备份）', Icon: FileJson },
-  { id: 'ai', label: 'AI 设置', Icon: KeyRound },
+  { id: 'ai', label: 'AI 助手', Icon: Sparkles },
   { id: 'rules', label: '使用边界', Icon: ShieldCheck },
 ] as const;
 
@@ -67,10 +68,7 @@ export function App() {
         ) : page === 'backup' ? (
           <BackupPage store={store} commit={commit} onCreated={(id) => { setEditingId(id); go('profile'); }} />
         ) : page === 'ai' ? (
-          <>
-            <h1>AI 设置</h1>
-            <section className="card"><p className="small muted">第三版接入 DeepSeek（兼容 OpenAI 协议）。字段兜底只发送字段名和选项，不发送你的个人信息。</p></section>
-          </>
+          <AiPage store={store} commit={commit} />
         ) : (
           <>
             <h1>使用边界</h1>
