@@ -1,0 +1,85 @@
+/* 全局基础样式。所有颜色、圆角、动效只用 tokens.css 里的变量。 */
+@import './tokens.css';
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: var(--fs-body)/var(--lh-body) var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { font-family: var(--font-serif); font-weight: 400; color: var(--text-strong); margin: 0; }
+h1 { font-size: var(--fs-h1); line-height: var(--lh-h1); letter-spacing: -0.01em; }
+h2 { font-size: var(--fs-h2); line-height: var(--lh-h2); }
+p { margin: 0; }
+code { font-family: var(--font-mono); font-size: 0.92em; }
+button { font: inherit; }
+
+.label { font-size: var(--fs-label); font-weight: 500; letter-spacing: .04em; color: var(--text-subtle); }
+.muted { color: var(--text-muted); }
+.small { font-size: var(--fs-small); line-height: var(--lh-small); }
+.stack { display: grid; gap: var(--space-2); }
+.row { display: flex; align-items: center; gap: var(--space-2); }
+.spacer { flex: 1; }
+
+/* 按钮：主操作黑色胶囊，其余 8px 圆角 */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  height: 40px; padding: 0 16px; border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: none; color: var(--text); font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-primary { height: 44px; padding: 0 20px; border-radius: var(--radius-pill); background: var(--cta-bg); color: var(--text-on-strong); }
+.btn-primary:not(:disabled):hover { background: var(--cta-hover); }
+.btn-primary .arrow { transition: transform var(--dur-fast) var(--ease); }
+.btn-primary:not(:disabled):hover .arrow { transform: translateX(2px); }
+.btn-secondary { border-color: var(--border-strong); }
+.btn-secondary:not(:disabled):hover { background: var(--surface-muted); }
+.btn-text { padding: 0 8px; color: var(--text-muted); }
+.btn-text:not(:disabled):hover { color: var(--brand); }
+.btn-icon { width: 32px; height: 32px; padding: 0; color: var(--text-muted); }
+.btn-icon:hover { background: var(--surface-muted); color: var(--text); }
+.btn-block { width: 100%; }
+
+/* 卡片：MiMo 灰绿底，无阴影 */
+.card { background: var(--surface-muted); border-radius: var(--radius-md); padding: var(--space-4); }
+.card-plain { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-4); }
+
+.pill { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: var(--radius-pill);
+        background: var(--surface-strong); color: var(--text); font-size: var(--fs-label); font-weight: 500; }
+
+.input {
+  height: 40px; width: 100%; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font: inherit;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.input:hover { border-color: var(--border-strong); }
+.input:focus { outline: none; border-color: var(--brand); box-shadow: var(--focus-ring); }
+
+/* 字段状态行：左侧 3px 色条 + 图标 + 文字，不只靠颜色 */
+.status { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: center;
+          padding: 10px var(--space-3); border-radius: var(--radius-sm); position: relative; color: var(--c);
+          transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.status::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--c); }
+.status:hover { background: var(--bg); }
+.status .name { font-size: var(--fs-small); color: var(--text-muted); }
+.status .val { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status .tag { font-size: var(--fs-label); font-weight: 500; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--soft); white-space: nowrap; }
+.status-ok { --c: var(--success); --soft: var(--success-soft); }
+.status-warn { --c: var(--warning); --soft: var(--warning-soft); }
+.status-err { --c: var(--danger); --soft: var(--danger-soft); }
+.status-skip { --c: var(--text-subtle); --soft: var(--surface-muted); }
+
+/* 面板/弹层出现：opacity + translateY 8px */
+.enter { animation: enter var(--dur-slow) var(--ease-enter) both; }
+@keyframes enter { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) {
+  .enter { animation-name: fade; }
+  @keyframes fade { from { opacity: 0; } }
+}
+
+.empty { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-6) var(--space-4); text-align: center; color: var(--text-muted); }
+.empty svg { color: var(--text-subtle); }
