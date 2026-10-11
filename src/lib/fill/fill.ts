@@ -7,6 +7,9 @@ import { clean, isTag, textOf } from './text';
 import { parsePath, pathIndexLabel, resolveValue } from './values';
 import { guessJob } from '../tracker/guess';
 import { collectRoots } from './roots';
+import { datePartValue } from './dates';
+import { hostOf, recall, signature, type FieldMemory } from './memory';
+import { ALIASES } from './aliases';
 
 // Filler：按控件类型分派写入，写入后回读页面实际显示的值。只填不交。
 
@@ -335,11 +338,6 @@ async function fillPicker(c: Control, value: string, sure: boolean): Promise<Out
 }
 
 /** 年、月分开选：从 YYYY-MM 里取出年或月 */
-function datePartValue(value: string, part: 'year' | 'month'): string | null {
-  const m = /^(\d{4})-(\d{2})/.exec(value);
-  if (!m) return null;
-  return part === 'year' ? m[1]! : String(Number(m[2]));
-}
 
 /** 北森的日期也是 phoenix-select 外壳，点开后是日历面板；能输入就输入，不能就留给用户 */
 async function fillPhoenixDate(c: Control, value: string, sure: boolean): Promise<Outcome> {
@@ -427,14 +425,28 @@ export interface PlannedField {
   index: number;
   sure: boolean;
   reason: string;
+  /** 按字段记忆认出的（用户之前在候选卡里选过） */
+  remembered?: boolean;
+}
+
+const KNOWN_PATHS = new Set(ALIASES.map((a) => a.path));
+
+/** 记住的路径还有效：内置字段，或档案里还在的自定义字段 */
+function validRemembered(path: string, profile: Profile): boolean {
+  if (path.startsWith('custom:')) return profile.custom.some((f) => `custom:${f.id}` === path);
+  return KNOWN_PATHS.has(path);
 }
 
 /** 识别并匹配，不写入。多条经历按出现顺序编号：第一个“学校”对应第 1 段教育经历。 */
-export function planFill(doc: Document, profile: Profile): PlannedField[] {
+export function planFill(doc: Document, profile: Profile, memory?: FieldMemory | null): PlannedField[] {
   const counters = new Map<string, number>();
+  const host = hostOf(doc.location?.href ?? '');
   return detectControls(doc).map((control) => {
     if (SKIP_KIND[control.kind]) return { control, path: null, index: 0, sure: false, reason: SKIP_KIND[control.kind]! };
-    const m = matchControl(control, profile);
+    // 用户亲自选过的优先于词典
+    const r = recall(memory, signature(control, host));
+    const remembered = !!r && validRemembered(r.path, profile);
+    const m = remembered ? { path: r.path, confidence: 'high' as const } : matchControl(control, profile);
     if (m.path === null) return { control, path: null, index: 0, sure: false, reason: m.reason };
     const arr = parsePath(m.path);
     let index = 0;
@@ -444,7 +456,7 @@ export function planFill(doc: Document, profile: Profile): PlannedField[] {
       if (control.part === 'month' && n > 0) index = n - 1;
       else { index = n; counters.set(m.path, n + 1); }
     }
-    return { control, path: m.path, index, sure: m.confidence === 'high', reason: '' };
+    return { control, path: m.path, index, sure: m.confidence === 'high', reason: '', ...(remembered && { remembered }) };
   });
 }
 
@@ -470,9 +482,9 @@ function originalValue(c: Control): string {
   return currentValue(c);
 }
 
-export async function runFill(doc: Document, profile: Profile): Promise<FillRun> {
+export async function runFill(doc: Document, profile: Profile, memory?: FieldMemory | null): Promise<FillRun> {
   const entries: FillEntry[] = [];
-  for (const f of planFill(doc, profile)) {
+  for (const f of planFill(doc, profile, memory)) {
     const index = entries.length;
     const label = describe(f.control) + (f.path ? (pathIndexLabel(f.path, f.index) ? `（${pathIndexLabel(f.path, f.index)}）` : '') : '');
     const flags = { ...(f.control.required && { required: true }), ...(f.control.kind === 'file' && { attach: true }) };
@@ -490,6 +502,7 @@ export async function runFill(doc: Document, profile: Profile): Promise<FillRun>
     try {
       let o = await write(f.control, f.path, value, f.sure);
       if (o.status === 'ok' && HIGH_RISK.test(f.path)) o = { ...o, status: 'warn', note: '重要信息，请核对' };
+      else if (o.status === 'ok' && f.remembered) o = { ...o, note: '按你之前的选择' };
       add({ path: f.path, ...o }, o.status !== 'skip', original);
     } catch (e) {
       add({ path: f.path, status: 'err', value: '', note: e instanceof SafetyError ? e.message : `填写出错：${String(e)}` }, true, original);
@@ -505,8 +518,26 @@ export async function runFill(doc: Document, profile: Profile): Promise<FillRun>
 }
 
 /** 多步表单：上次填写之后新出现的、认得出且还空着的字段数。只统计，不填。 */
-export function countNewFillable(doc: Document, profile: Profile, seen: WeakSet<Element>): number {
-  return planFill(doc, profile).filter((f) => f.path && !seen.has(f.control.el) && !currentValue(f.control).trim()).length;
+export function countNewFillable(doc: Document, profile: Profile, seen: WeakSet<Element>, memory?: FieldMemory | null): number {
+  return planFill(doc, profile, memory).filter((f) => f.path && !seen.has(f.control.el) && !currentValue(f.control).trim()).length;
+}
+
+/** 字段现在还空着（候选卡只给空字段弹出） */
+export const isEmpty = (c: Control) => !currentValue(c).trim();
+
+/** 候选卡（计划书 V5）：用户从档案里亲手选了一项，写进这个字段并回读 */
+export async function fillFromCandidate(e: FillEntry, path: string, value: string): Promise<FillItem> {
+  if (!e.written) e.original = originalValue(e.control);
+  let o: Outcome;
+  try {
+    o = await write(e.control, path, value, true);
+  } catch (err) {
+    o = fail('', err instanceof SafetyError ? err.message : `填写出错：${String(err)}`);
+  }
+  if (o.status === 'warn') o = { ...o, status: 'ok', note: '' }; // 用户亲自选的，不用再确认
+  e.item = { ...e.item, path, status: o.status, value: o.value, note: o.status === 'ok' ? '你从候选里选的' : o.note };
+  e.written ||= o.status !== 'skip';
+  return e.item;
 }
 
 export async function fillDocument(doc: Document, profile: Profile): Promise<FillReport> {
