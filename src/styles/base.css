@@ -83,3 +83,32 @@ button { font: inherit; }
 
 .empty { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-6) var(--space-4); text-align: center; color: var(--text-muted); }
 .empty svg { color: var(--text-subtle); }
+
+/* 表单 */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-4) var(--space-3); }
+.field { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.field-wide { grid-column: 1 / -1; }
+.field-label { font-size: var(--fs-small); font-weight: 500; color: var(--text-muted); }
+.field-msg { font-size: var(--fs-label); color: var(--text-subtle); }
+.field-err { color: var(--warning); }
+.input-invalid { border-color: var(--warning); }
+.select { appearance: none; padding-right: 32px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2387867f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; }
+.textarea { height: auto; min-height: 96px; padding: 10px 12px; line-height: var(--lh-body); resize: vertical; }
+input[type="month"].input, input[type="date"].input { font-variant-numeric: tabular-nums; }
+
+.toggle { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; font-size: var(--fs-small); color: var(--text-muted); user-select: none; }
+.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle-track { width: 32px; height: 18px; border-radius: var(--radius-pill); background: var(--surface-strong); position: relative; flex: none;
+                transition: background var(--dur-fast) var(--ease); }
+.toggle-thumb { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface);
+                box-shadow: 0 1px 2px rgba(0,0,0,.15); transition: transform var(--dur-fast) var(--ease); }
+.toggle input:checked + .toggle-track { background: var(--brand); }
+.toggle input:checked + .toggle-track .toggle-thumb { transform: translateX(14px); }
+.toggle input:focus-visible + .toggle-track { box-shadow: var(--focus-ring); }
+
+.btn-danger:not(:disabled):hover { color: var(--danger); background: var(--danger-soft); }
+.btn-confirm-danger { border-color: var(--danger); color: var(--danger); }
+.btn-confirm-danger:hover { background: var(--danger-soft); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

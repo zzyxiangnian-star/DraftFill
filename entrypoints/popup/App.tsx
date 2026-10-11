@@ -4,6 +4,8 @@ import { Logo } from '@/src/components/Logo';
 import { StatusRow } from '@/src/components/StatusRow';
 import { iconProps } from '@/src/components/icon';
 import type { FieldKind, Request, ScanResult } from '@/src/lib/messages';
+import { activeProfile, setActive } from '@/src/lib/profile/store';
+import { useProfileStore } from '@/src/lib/profile/useProfileStore';
 
 const KIND_LABEL: Record<FieldKind, string> = {
   text: '文本框', textarea: '多行文本', select: '下拉框', radio: '单选', checkbox: '复选', date: '日期',
@@ -12,6 +14,8 @@ const KIND_LABEL: Record<FieldKind, string> = {
 export function App() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const { store, commit } = useProfileStore();
+  const active = store && activeProfile(store);
 
   async function scan() {
     setBusy(true);
@@ -78,10 +82,25 @@ export function App() {
       </button>
 
       <div className="foot">
-        <span className="profile small muted">
-          <UserRound {...iconProps} /> 还没有档案
-        </span>
-        <button className="btn btn-text small" onClick={() => browser.runtime.openOptionsPage()}>创建档案</button>
+        {!store ? <span /> : !active ? (
+          <>
+            <span className="profile small muted"><UserRound {...iconProps} /> 还没有档案</span>
+            <button className="btn btn-text small" onClick={() => browser.runtime.openOptionsPage()}>创建档案</button>
+          </>
+        ) : (
+          <>
+            <label className="profile small">
+              <UserRound {...iconProps} aria-hidden />
+              <span className="sr-only">填写时使用的档案</span>
+              {store.profiles.length > 1 ? (
+                <select className="profile-select" value={active.id} onChange={(e) => commit(setActive(store, e.target.value), true)}>
+                  {store.profiles.map((p) => <option key={p.id} value={p.id}>{p.title || '未命名档案'}</option>)}
+                </select>
+              ) : <span>{active.title}</span>}
+            </label>
+            <button className="btn btn-text small" onClick={() => browser.runtime.openOptionsPage()}>编辑档案</button>
+          </>
+        )}
       </div>
     </div>
   );
