@@ -5,3 +5,4 @@ node_modules
 .DS_Store
 web-ext.config.ts
 tests/fixtures/dist
+test-results
