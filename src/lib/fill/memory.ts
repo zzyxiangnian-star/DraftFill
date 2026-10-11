@@ -6,7 +6,7 @@ import { clean } from './text';
 // 下次在同一个网站遇到同一个字段直接认出。只按网站记，不跨网站套用，避免认错。
 
 export interface Remembered {
-  /** 档案路径，多条经历用 [] 占位（education[].school），不记第几条 */
+  /** 档案路径，记到第几条（education[1].school）。页面上同名字段重复出现（多段经历）时按顺序填，见 planFill */
   path: string;
   /** 字段名，设置页里展示用 */
   label: string;
@@ -40,7 +40,7 @@ export function signature(c: Pick<Control, 'kind' | 'label' | 'placeholder' | 's
 export const generalPath = (path: string) => path.replace(/\[\d+\]/, '[]');
 
 export function remember(m: FieldMemory, sig: string, r: Omit<Remembered, 'at'>, now = Date.now()): FieldMemory {
-  const items = { ...m.items, [sig]: { ...r, path: generalPath(r.path), at: now } };
+  const items = { ...m.items, [sig]: { ...r, at: now } };
   const keys = Object.keys(items);
   if (keys.length > MEMORY_LIMIT) {
     // 超过上限时丢掉最久没用过的

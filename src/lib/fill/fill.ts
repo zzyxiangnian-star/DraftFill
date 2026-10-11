@@ -8,7 +8,7 @@ import { parsePath, pathIndexLabel, resolveValue } from './values';
 import { guessJob } from '../tracker/guess';
 import { collectRoots } from './roots';
 import { datePartValue } from './dates';
-import { hostOf, recall, signature, type FieldMemory } from './memory';
+import { generalPath, hostOf, recall, signature, type FieldMemory } from './memory';
 import { ALIASES } from './aliases';
 
 // Filler：按控件类型分派写入，写入后回读页面实际显示的值。只填不交。
@@ -434,19 +434,24 @@ const KNOWN_PATHS = new Set(ALIASES.map((a) => a.path));
 /** 记住的路径还有效：内置字段，或档案里还在的自定义字段 */
 function validRemembered(path: string, profile: Profile): boolean {
   if (path.startsWith('custom:')) return profile.custom.some((f) => `custom:${f.id}` === path);
-  return KNOWN_PATHS.has(path);
+  return KNOWN_PATHS.has(generalPath(path));
 }
 
 /** 识别并匹配，不写入。多条经历按出现顺序编号：第一个“学校”对应第 1 段教育经历。 */
 export function planFill(doc: Document, profile: Profile, memory?: FieldMemory | null): PlannedField[] {
   const counters = new Map<string, number>();
   const host = hostOf(doc.location?.href ?? '');
-  return detectControls(doc).map((control) => {
+  const controls = detectControls(doc);
+  const sigs = controls.map((c) => (memory ? signature(c, host) : null));
+  const repeats = new Map<string, number>();
+  for (const s of sigs) if (s) repeats.set(s, (repeats.get(s) ?? 0) + 1);
+  return controls.map((control, i) => {
     if (SKIP_KIND[control.kind]) return { control, path: null, index: 0, sure: false, reason: SKIP_KIND[control.kind]! };
-    // 用户亲自选过的优先于词典
-    const r = recall(memory, signature(control, host));
+    // 用户亲自选过的优先于词典。同名字段在页面上重复出现（每段经历一组）时，不认死第几条，按出现顺序填
+    const r = recall(memory, sigs[i]!);
     const remembered = !!r && validRemembered(r.path, profile);
-    const m = remembered ? { path: r.path, confidence: 'high' as const } : matchControl(control, profile);
+    const rpath = remembered ? ((repeats.get(sigs[i]!) ?? 0) > 1 ? generalPath(r.path) : r.path) : '';
+    const m = remembered ? { path: rpath, confidence: 'high' as const } : matchControl(control, profile);
     if (m.path === null) return { control, path: null, index: 0, sure: false, reason: m.reason };
     const arr = parsePath(m.path);
     let index = 0;
@@ -521,6 +526,9 @@ export async function runFill(doc: Document, profile: Profile, memory?: FieldMem
 export function countNewFillable(doc: Document, profile: Profile, seen: WeakSet<Element>, memory?: FieldMemory | null): number {
   return planFill(doc, profile, memory).filter((f) => f.path && !seen.has(f.control.el) && !currentValue(f.control).trim()).length;
 }
+
+/** 这种控件能从候选卡里选值写入（密码、验证码、附件、复选框等不行） */
+export const pickable = (c: Control) => !SKIP_KIND[c.kind];
 
 /** 字段现在还空着（候选卡只给空字段弹出） */
 export const isEmpty = (c: Control) => !currentValue(c).trim();

@@ -16,7 +16,7 @@ const GROUPS: { title: string; hint?: string; test: (i: FillItem) => boolean }[]
   { title: '需要你看一下', test: (i) => i.status === 'err' || i.status === 'warn' },
   { title: '要你自己上传的附件', hint: '浏览器不允许插件替你选文件。点一项定位到上传按钮。', test: (i) => !!i.attach },
   { title: '已填写', test: (i) => i.status === 'ok' },
-  { title: '没有填写', test: (i) => i.status === 'skip' },
+  { title: '没有填写', hint: '点一项定位到字段，字段旁会列出档案里能填的内容，点一下就填上。', test: (i) => i.status === 'skip' },
 ];
 
 function groupItems(items: FillItem[]) {

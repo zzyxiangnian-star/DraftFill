@@ -5,6 +5,7 @@ import { iconProps } from '@/src/components/icon';
 import { useProfileStore } from '@/src/lib/profile/useProfileStore';
 import { AiPage } from './AiPage';
 import { BackupPage } from './BackupPage';
+import { MemoryCard } from './MemoryCard';
 import { SECTIONS } from './ProfileEditor';
 import { ProfilePage } from './ProfilePage';
 
@@ -82,6 +83,7 @@ export function App() {
                 <li>档案只存在你自己的浏览器里，没有服务器，开发者也看不到。</li>
               </ul>
             </section>
+            <MemoryCard store={store} />
           </>
         )}
       </main>

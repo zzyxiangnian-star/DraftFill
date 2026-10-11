@@ -236,6 +236,31 @@ test('多步表单：同源 iframe、shadow DOM 里的字段也能填；必填�
   await close();
 });
 
+test('候选卡：没填的字段点进去，从档案里选一项填上；记住后下次自动填', async () => {
+  const first = await run('steps');
+  expect(first.report.items.find((i) => i.label.startsWith('昵称'))).toMatchObject({ status: 'skip' });
+  const page = ctx.pages().find((p) => p.url().endsWith('/steps.html'))!;
+  await page.click('#nick');
+  const card = page.locator('#wangshen-card');
+  await expect(card.getByRole('dialog')).toBeVisible();
+  await card.getByPlaceholder('搜索档案里的内容').fill('武汉');
+  if (process.env.SHOT_CARD) await page.screenshot({ path: process.env.SHOT_CARD });
+  await card.getByRole('option', { name: /武汉大学/ }).click();
+  await expect(card).toHaveCount(0);
+  expect(await page.inputValue('#nick')).toBe('武汉大学');
+  await expect.poll(() => sw.evaluate(async () => Object.keys((await chrome.storage.local.get('fieldMemory')).fieldMemory?.items ?? {}).length)).toBe(1);
+  // 已经填了的字段、密码框不会弹
+  await page.click('#xm');
+  await expect(card).toHaveCount(0);
+  await first.close();
+
+  const again = await run('steps');
+  expect(again.report.items.find((i) => i.label.startsWith('昵称'))).toMatchObject({ status: 'ok', value: '武汉大学', note: '按你之前的选择' });
+  expect(again.submitted).toBe(false);
+  await sw.evaluate(() => chrome.storage.local.remove('fieldMemory'));
+  await again.close();
+});
+
 test('AI 助手：问问题自动选技能；简历诊断按格式展示；发出去的内容不含个人信息', async () => {
   aiRequests.length = 0;
   await sw.evaluate((port) => chrome.storage.local.set({ aiSettings: { provider: 'custom', apiKey: 'test-key', model: 'fake', baseUrl: `http://localhost:${port}/v1` } }), PORT);

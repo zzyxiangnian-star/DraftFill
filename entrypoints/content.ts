@@ -1,13 +1,15 @@
-import { countNewFillable, runFill, undoFill, type FillEntry } from '@/src/lib/fill/fill';
+import { startCandidateCard, type PickEvent } from '@/src/lib/fill/card';
+import { countNewFillable, fillFromCandidate, runFill, undoFill, type FillEntry } from '@/src/lib/fill/fill';
 import { applyMarks, clearMarks, reveal } from '@/src/lib/fill/marks';
-import { pageChangeItem } from '@/src/lib/fill/reportStore';
+import { fieldMemoryItem, hostOf, remember, signature } from '@/src/lib/fill/memory';
+import { lastReportItem, pageChangeItem } from '@/src/lib/fill/reportStore';
 import type { FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
 import { activeProfile, loadStore } from '@/src/lib/profile/store';
 
 declare global {
   interface Window {
     __wangshenReady?: boolean; __wangshenBusy?: boolean; __wangshenEntries?: FillEntry[];
-    __wangshenWatch?: () => void;
+    __wangshenWatch?: () => void; __wangshenCard?: () => void;
   }
 }
 
@@ -34,7 +36,7 @@ function watchPage(entries: FillEntry[]) {
     if (window.__wangshenBusy) return;
     const profile = activeProfile(await loadStore());
     if (!profile) return;
-    const count = countNewFillable(document, profile, seen);
+    const count = countNewFillable(document, profile, seen, await fieldMemoryItem.getValue());
     if (count === last) return;
     last = count;
     await pageChangeItem.setValue(count ? { url: location.href, at: Date.now(), count } : null);
@@ -54,18 +56,45 @@ async function fill(): Promise<FillResult> {
   const profile = activeProfile(await loadStore());
   if (!profile) return { ok: false, reason: '还没有档案，请先在设置页创建' };
   window.__wangshenWatch?.();
-  const run = await runFill(document, profile);
+  window.__wangshenCard?.();
+  const run = await runFill(document, profile, await fieldMemoryItem.getValue());
   window.__wangshenEntries = run.entries;
   applyMarks(document, run.entries);
   await pageChangeItem.setValue(null);
   watchPage(run.entries);
+  window.__wangshenCard = startCandidateCard(document, run.entries, { profile, onPick: (e) => pick(run.entries, e) });
   return { ok: true, report: run.report };
+}
+
+/** 计划书 V5 + V4：用户在候选卡里选了一项。写入、标色、更新侧边栏；勾了“记住”就按字段签名记下来。 */
+async function pick(entries: FillEntry[], { entry, candidate, remember: keep }: PickEvent): Promise<boolean> {
+  if (window.__wangshenBusy) return false;
+  window.__wangshenBusy = true;
+  try {
+    const item = await fillFromCandidate(entry, candidate.path, candidate.value);
+    const ok = item.status === 'ok' || item.status === 'warn';
+    applyMarks(document, entries);
+    const last = await lastReportItem.getValue();
+    if (last && last.url === location.href && !last.undoneAt) {
+      await lastReportItem.setValue({ ...last, items: last.items.map((i) => (i.index === item.index ? item : i)) });
+    }
+    const host = hostOf(location.href);
+    const sig = signature(entry.control, host);
+    if (ok && keep && sig) {
+      const label = entry.item.label.replace(/（.*$/, '');
+      await fieldMemoryItem.setValue(remember(await fieldMemoryItem.getValue(), sig, { path: candidate.path, label, host }));
+    }
+    return ok;
+  } finally {
+    window.__wangshenBusy = false;
+  }
 }
 
 async function undo(): Promise<UndoResult> {
   const entries = window.__wangshenEntries;
   if (!entries) return { ok: false, reason: NO_RECORD };
   window.__wangshenWatch?.();
+  window.__wangshenCard?.();
   const r = await undoFill(entries);
   clearMarks(document);
   window.__wangshenEntries = undefined;
