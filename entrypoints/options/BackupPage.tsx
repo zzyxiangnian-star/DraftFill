@@ -4,10 +4,15 @@ import { iconProps } from '@/src/components/icon';
 import { backupFileName, exportBackup, parseBackup } from '@/src/lib/profile/io';
 import type { ProfileStore } from '@/src/lib/profile/schema';
 import { appendProfiles } from '@/src/lib/profile/store';
+import { ResumeImport } from './ResumeImport';
 
 type Notice = { kind: 'ok' | 'err'; text: string } | null;
 
-export function BackupPage({ store, commit }: { store: ProfileStore; commit: (s: ProfileStore, immediate?: boolean) => void }) {
+export function BackupPage({ store, commit, onCreated }: {
+  store: ProfileStore;
+  commit: (s: ProfileStore, immediate?: boolean) => void;
+  onCreated: (id: string) => void;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [notice, setNotice] = useState<Notice>(null);
 
@@ -39,6 +44,8 @@ export function BackupPage({ store, commit }: { store: ProfileStore; commit: (s:
         <h1>导入导出</h1>
         <p className="muted">换电脑、重装浏览器前先导出备份。备份文件不含 AI 的 API Key。</p>
       </div>
+
+      <ResumeImport store={store} commit={commit} onCreated={onCreated} />
 
       <section className="card stack" style={{ gap: 'var(--space-3)' }}>
         <h2>导出备份</h2>

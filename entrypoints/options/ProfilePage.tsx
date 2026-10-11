@@ -39,7 +39,7 @@ export function ProfilePage({ store, commit, editingId, setEditingId, goImport }
               commit(next, true);
               setEditingId(next.profiles[0]!.id);
             }}><Plus {...iconProps} /> 创建主档案</button>
-            <button className="btn btn-secondary" onClick={goImport}><Upload {...iconProps} /> 从备份导入</button>
+            <button className="btn btn-secondary" onClick={goImport}><Upload {...iconProps} /> 从简历或备份导入</button>
           </div>
         </section>
       </>

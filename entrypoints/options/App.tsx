@@ -9,7 +9,7 @@ import { ProfilePage } from './ProfilePage';
 
 const PAGES = [
   { id: 'profile', label: '个人档案', Icon: UserRound },
-  { id: 'backup', label: '导入导出', Icon: FileJson },
+  { id: 'backup', label: '导入（简历/备份）', Icon: FileJson },
   { id: 'ai', label: 'AI 设置', Icon: KeyRound },
   { id: 'rules', label: '使用边界', Icon: ShieldCheck },
 ] as const;
@@ -65,7 +65,7 @@ export function App() {
         {!store ? null : page === 'profile' ? (
           <ProfilePage store={store} commit={commit} editingId={editingId} setEditingId={setEditingId} goImport={() => go('backup')} />
         ) : page === 'backup' ? (
-          <BackupPage store={store} commit={commit} />
+          <BackupPage store={store} commit={commit} onCreated={(id) => { setEditingId(id); go('profile'); }} />
         ) : page === 'ai' ? (
           <>
             <h1>AI 设置</h1>

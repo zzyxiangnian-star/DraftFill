@@ -56,3 +56,15 @@
 .notice { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); font-size: var(--fs-small); }
 .notice-ok { background: var(--success-soft); color: var(--text); }
 .notice-err { background: var(--danger-soft); color: var(--text); }
+.notice-warn { background: var(--warning-soft); color: var(--text); }
+
+/* 简历导入预览 */
+.resume-preview { display: grid; gap: var(--space-3); background: var(--surface); border-radius: var(--radius-sm); padding: var(--space-4); max-height: 480px; overflow: auto; }
+.resume-group { display: grid; gap: 6px; }
+.resume-group dl { margin: 0; display: grid; gap: 2px; }
+.resume-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: var(--space-3); font-size: var(--fs-small); }
+.resume-row dt { color: var(--text-subtle); }
+.resume-row dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

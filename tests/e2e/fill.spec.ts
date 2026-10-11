@@ -125,3 +125,23 @@ test('element：撤销后组件状态清空；没有清空按钮的下拉如实�
     expect(r.values?.[k] ?? '').toBeFalsy();
   }
 });
+
+// 简历导入在插件设置页里跑：PDF 用 pdf.js 的 worker，Word 用 mammoth 的浏览器版，都要在 MV3 的安全策略下能用
+for (const [file, name] of [['a-classic.pdf', '王小明'], ['b-kv.docx', '李思雨']] as const) {
+  test(`设置页：从简历导入 ${file}，预览后存为新档案`, async () => {
+    const id = new URL(sw.url()).host;
+    const page = await ctx.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(`chrome-extension://${id}/options.html#backup`);
+    await page.locator('input[type=file][accept*=pdf]').setInputFiles(join(ROOT, 'tests/fixtures/resumes', file));
+    await expect(page.getByText(/认出了 \d+ 项/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.resume-preview')).toContainText(name);
+    await page.getByRole('button', { name: '存为新档案' }).click();
+    await expect(page.locator('.title-input')).toHaveValue(`${name}的简历`);
+    const stored = await sw.evaluate(() => chrome.storage.local.get('profiles')) as { profiles: { profiles: { title: string; basic: { name: string } }[] } };
+    expect(stored.profiles.profiles.some((p) => p.basic.name === name)).toBe(true);
+    expect(errors).toEqual([]);
+    await page.close();
+  });
+}
