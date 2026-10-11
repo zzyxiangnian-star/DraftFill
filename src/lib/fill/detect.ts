@@ -1,5 +1,6 @@
 import { collectHeadings, sectionOf, type Section } from './sections';
-import { clean, textOf, tokens } from './text';
+import { collectRoots, rootOf, type FormRoot } from './roots';
+import { clean, isEl, isTag, textOf, tokens } from './text';
 
 // FieldDetector：找出页面上的表单字段，并为每个字段提取多种信号（标签、占位符、name/id、分区）。
 
@@ -41,6 +42,8 @@ const FORM_ITEM = '.ant-form-item, .el-form-item, .form-item, .form-group, [clas
 const PICKER_HINT = /选择|日期|时间|年|月|省|市|区|地/;
 const LABELISH = '.ant-form-item-label, .el-form-item__label, label, [class*="label"], [class*="Label"], th, dt, [class*="title"]';
 const CAPTCHA = /验证码|校验码|captcha|verify|动态码/i;
+/** 必填标记：北森 form-item__required、Moka required-asterisk、AntD / Element 的 required 类 */
+const REQUIRED_MARK = '[class*="required" i], [class*="asterisk" i]';
 const MAX_LABEL = 30;
 
 export function isVisible(el: Element): boolean {
@@ -78,7 +81,7 @@ function labelInContainer(container: Element, anchor: Element, skipOptionLabels:
 }
 
 function labelOf(anchor: HTMLElement, input: HTMLElement | null, isGroup: boolean): string {
-  const doc = anchor.ownerDocument;
+  const doc = rootOf(anchor);
   const target = input ?? anchor;
 
   // 1. <label for>（单选组里 label for 指向的是选项文字，跳过）
@@ -99,9 +102,9 @@ function labelOf(anchor: HTMLElement, input: HTMLElement | null, isGroup: boolea
   if (isGroup) {
     let lead = '';
     for (const child of anchor.childNodes) {
-      if (child instanceof Element && child.querySelector('input')) break;
-      if (child instanceof Element && child.matches('input')) break;
-      lead += child instanceof Element ? textOf(child) : child.textContent ?? '';
+      if (isEl(child) && child.querySelector('input')) break;
+      if (isEl(child) && child.matches('input')) break;
+      lead += isEl(child) ? textOf(child) : child.textContent ?? '';
     }
     const t = short(lead);
     if (t) return t;
@@ -140,8 +143,8 @@ function labelOf(anchor: HTMLElement, input: HTMLElement | null, isGroup: boolea
   for (let depth = 0; n && depth < 3 && !n.matches('form, body'); n = n.parentElement, depth++) {
     let sib: Node | null = n.previousSibling;
     for (let i = 0; sib && i < 3; sib = sib.previousSibling, i++) {
-      if (sib instanceof Element && sib.querySelector('input, textarea, select')) break;
-      const t = short(sib instanceof Element ? textOf(sib, MAX_LABEL + 5) : (sib.textContent ?? ''));
+      if (isEl(sib) && sib.querySelector('input, textarea, select')) break;
+      const t = short(isEl(sib) ? textOf(sib, MAX_LABEL + 5) : (sib.textContent ?? ''));
       if (t) return t;
     }
   }
@@ -149,7 +152,7 @@ function labelOf(anchor: HTMLElement, input: HTMLElement | null, isGroup: boolea
 }
 
 function optionLabel(radio: HTMLInputElement): string {
-  const doc = radio.ownerDocument;
+  const doc = rootOf(radio);
   if (radio.id) {
     const l = doc.querySelector(`label[for="${CSS.escape(radio.id)}"]`);
     if (l) return textOf(l);
@@ -184,10 +187,33 @@ function datePart(root: HTMLElement, input: HTMLInputElement | null): Partial<Co
   return extra;
 }
 
+/** 必填：原生 required、标签里的星号，或同一个表单项里的必填标记（不越过别的字段） */
+function isRequired(el: HTMLElement, input: HTMLElement | null, label: string, part?: Control['part']): boolean {
+  if (input?.hasAttribute('required') || input?.getAttribute('aria-required') === 'true') return true;
+  if (/^\s*[*＊]|[*＊]\s*[:：]?\s*$/.test(label)) return true;
+  // 年、月分开选的几个框同属一个字段，直接看外层表单项
+  let n: Element | null = part ? el.closest(FORM_ITEM) : el.parentElement;
+  for (let depth = 0; n && depth < 8 && !n.matches('form, body'); n = n.parentElement, depth++) {
+    if (!part && hasOtherControls(n, el)) break;
+    if ([...n.querySelectorAll(REQUIRED_MARK)].some((m) => !el.contains(m) || m === el)) return true;
+    if (hasCssStar(n, el)) return true;
+    if (part) break;
+  }
+  return false;
+}
+
+/** 用 CSS ::before 画出来的星号（Element 的 is-required 等），文字里读不到 */
+function hasCssStar(container: Element, self: Element): boolean {
+  const view = container.ownerDocument.defaultView;
+  if (!view) return false;
+  const cands = [...container.querySelectorAll(`${LABELISH}, span, i, em`)].filter((x) => !self.contains(x)).slice(0, 6);
+  return cands.some((x) => ['::before', '::after'].some((p) => /[*＊]/.test(view.getComputedStyle(x, p).content || '')));
+}
+
 function nativeKind(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): ControlKind | null {
-  if (el instanceof HTMLTextAreaElement) return 'textarea';
-  if (el instanceof HTMLSelectElement) return 'select';
-  switch (el.type) {
+  if (isTag(el, 'textarea')) return 'textarea';
+  if (isTag(el, 'select')) return 'select';
+  switch ((el as HTMLInputElement).type) {
     case 'hidden': case 'submit': case 'button': case 'reset': case 'image': case 'range': case 'color': case 'search':
       return null;
     case 'password': return 'password';
@@ -201,6 +227,10 @@ function nativeKind(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectEleme
 }
 
 export function detectControls(doc: Document): Control[] {
+  return collectRoots(doc).roots.flatMap(detectIn);
+}
+
+function detectIn(doc: FormRoot): Control[] {
   const headings = collectHeadings(doc);
   const out: Control[] = [];
   const seenRadio = new Set<string | Element>();
@@ -212,14 +242,12 @@ export function detectControls(doc: Document): Control[] {
     const placeholder = (input?.getAttribute('placeholder') ?? el.querySelector('[class*="placeholder"]')?.textContent ?? '').trim();
     const hint = `${label} ${placeholder} ${keysOf(input, el).join(' ')}`;
     const finalKind: ControlKind = kind === 'text' && CAPTCHA.test(hint) ? 'captcha' : kind;
-    const formItem = el.closest('.ant-form-item, .el-form-item');
     out.push({
       kind: finalKind, el, label, placeholder,
       keys: keysOf(input, el),
       section: sectionOf(el, headings),
       options: [],
-      required: !!(input?.hasAttribute('required') || input?.getAttribute('aria-required') === 'true'
-        || formItem?.querySelector('.ant-form-item-required, .is-required') || formItem?.classList.contains('is-required')),
+      required: isRequired(el, input, label, extra.part),
       ...extra,
     });
   };
@@ -253,7 +281,7 @@ export function detectControls(doc: Document): Control[] {
     const kind = nativeKind(el);
     if (!kind || el.disabled) continue;
     if (kind !== 'radio' && kind !== 'checkbox' && kind !== 'file' && !isVisible(el)) continue;
-    if (el instanceof HTMLInputElement && el.readOnly && kind === 'text') {
+    if (isTag(el, 'input') && el.readOnly && kind === 'text') {
       // 只读框一般是点开面板选的（日期、省市区），列出来告诉用户要自己选
       const ph = el.getAttribute('placeholder') ?? '';
       if (isVisible(el) && PICKER_HINT.test(ph)) push('readonly', el, el);
@@ -277,7 +305,7 @@ export function detectControls(doc: Document): Control[] {
       continue;
     }
     const extra: Partial<Control> = {};
-    if (el instanceof HTMLSelectElement) {
+    if (isTag(el, 'select')) {
       extra.options = [...el.options].map((o) => o.text.trim()).filter((t) => t && !/^(请选择|--|—)/.test(t));
     }
     push(kind, el, el, extra);

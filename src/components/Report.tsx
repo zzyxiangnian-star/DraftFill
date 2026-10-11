@@ -10,18 +10,23 @@ export function countByStatus(items: FillItem[]): Record<FillStatus, number> {
   return c;
 }
 
+/** 必填但没填上的（附件另算） */
+export const isMissingRequired = (i: FillItem) => !!i.required && !i.attach && i.status === 'skip';
+
 export function sortItems(items: FillItem[]): FillItem[] {
   return [...items].sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
 }
 
 export function Counts({ items }: { items: FillItem[] }) {
   const c = countByStatus(items);
+  const need = items.filter(isMissingRequired).length;
   return (
     <div className="counts">
       <span className="count count-ok">已填 {c.ok}</span>
       {c.warn > 0 && <span className="count count-warn">需确认 {c.warn}</span>}
       {c.err > 0 && <span className="count count-err">不一致 {c.err}</span>}
       <span className="count count-skip">未填 {c.skip}</span>
+      {need > 0 && <span className="count count-err">其中必填 {need}</span>}
     </div>
   );
 }

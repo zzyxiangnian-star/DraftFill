@@ -27,3 +27,5 @@
 .status-select { width: auto; height: 30px; padding: 0 28px 0 10px; font-size: var(--fs-small); border-radius: var(--radius-pill); flex: none; }
 .status-2, .status-3 { background-color: var(--brand-soft); color: var(--brand); border-color: transparent; }
 .status-4, .status-5 { color: var(--text-subtle); }
+.group-hint { margin: -4px 0 0; padding: 0 var(--space-3); }
+.notice-warn { background: var(--warning-soft); color: var(--text); }

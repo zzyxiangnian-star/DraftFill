@@ -171,3 +171,45 @@ test('侧边栏投递看板：填完记一条、改状态、导出表格', async
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
   await page.close();
 });
+
+test('多步表单：同源 iframe、shadow DOM 里的字段也能填；必填和附件单独标出；点下一步后提示新字段', async () => {
+  const { report, submitted, close } = await run('steps');
+  const by = (label: string) => report.items.find((i) => i.label.startsWith(label));
+  expect(by('姓名')).toMatchObject({ status: 'ok', value: '王小明', required: true });
+  expect(by('户口所在地')).toMatchObject({ required: true });
+  expect(by('昵称')?.required).toBeFalsy();
+  expect(by('兴趣爱好')).toMatchObject({ status: 'skip', required: true });
+  expect(by('上传简历')).toMatchObject({ status: 'skip', attach: true, required: true });
+  expect(by('学校名称')).toMatchObject({ status: 'ok', value: '北京大学', required: true });
+  expect(by('专业')).toMatchObject({ status: 'ok' });
+  expect(by('民族')).toMatchObject({ status: 'ok', value: '汉' });
+  expect(report.items.some((i) => i.label.startsWith('公司名称'))).toBe(false);
+
+  // 用户自己点“下一步”，第二步的字段出现，侧边栏收到提示（不会自动填）
+  const page = ctx.pages().find((p) => p.url().endsWith('/steps.html'))!;
+  await page.click('#next');
+  await expect.poll(() => sw.evaluate(async () => (await chrome.storage.local.get('pageChange')).pageChange?.count ?? 0), { timeout: 5000 }).toBe(2);
+  expect(await page.inputValue('#gs')).toBe('');
+
+  // 侧边栏：必填还空着、附件单独成组，并提示填写新出现的字段
+  await sw.evaluate((rep) => chrome.storage.local.set({ lastReport: rep }), report);
+  const side = await ctx.newPage();
+  await side.setViewportSize({ width: 400, height: 900 });
+  await side.goto(`chrome-extension://${new URL(sw.url()).host}/sidepanel.html`);
+  await expect(side.getByRole('heading', { name: /必填还空着/ })).toBeVisible();
+  await expect(side.getByRole('heading', { name: /要你自己上传的附件/ })).toBeVisible();
+  await expect(side.getByText('页面上新出现了 2 个能填的字段')).toBeVisible();
+  if (process.env.SHOT_STEPS) await side.screenshot({ path: process.env.SHOT_STEPS, fullPage: true });
+  await side.close();
+
+  const again = await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: '*://localhost/*steps.html' });
+    return chrome.tabs.sendMessage(tab!.id!, { type: 'fill' });
+  }) as { ok: true; report: FillReport };
+  const by2 = (label: string) => again.report.items.find((i) => i.label.startsWith(label));
+  expect(by2('公司名称')).toMatchObject({ status: 'ok', value: '示例科技' });
+  expect(by2('职位名称')).toMatchObject({ status: 'ok' });
+  expect(submitted).toBe(false);
+  expect(await page.evaluate(() => (window as unknown as { __submitted?: boolean }).__submitted ?? false)).toBe(false);
+  await close();
+});

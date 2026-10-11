@@ -14,6 +14,12 @@ export function clean(s: string | null | undefined): string {
     .toLowerCase();
 }
 
+// 同源 iframe 里的节点来自另一个 window，instanceof 判断会失败，统一按 nodeType / tagName 判断
+export const isEl = (n: Node | null | undefined): n is Element => n?.nodeType === 1;
+export function isTag<K extends keyof HTMLElementTagNameMap>(n: Node | null | undefined, tag: K): n is HTMLElementTagNameMap[K] {
+  return isEl(n) && n.tagName === tag.toUpperCase();
+}
+
 /** 元素的可见文字（不含表单控件和隐藏元素里的文字），截断以免把整块内容当成标签 */
 export function textOf(el: Element | null | undefined, max = 40): string {
   if (!el) return '';
@@ -21,7 +27,7 @@ export function textOf(el: Element | null | undefined, max = 40): string {
   const walk = (n: Node) => {
     if (out.length > max) return;
     if (n.nodeType === Node.TEXT_NODE) { out += n.textContent ?? ''; return; }
-    if (!(n instanceof Element)) return;
+    if (!isEl(n)) return;
     if (n.matches('input, textarea, select, option, script, style, [hidden], [aria-hidden="true"]')) return;
     for (const c of n.childNodes) walk(c);
   };

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>多步表单测试页（iframe、shadow DOM、点下一步出现新字段）</title>
+<style>
+  body { font: 14px/1.6 sans-serif; max-width: 760px; margin: 24px auto; }
+  .row { margin: 8px 0; } .row > label, .row > span { display: inline-block; width: 120px; text-align: right; }
+  .req::before { content: '*'; color: #c00; }
+  iframe { width: 100%; height: 160px; border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<!-- 自制测试页：模拟多步网申。data-expect 是正确答案。 -->
+<h1>示例公司 2027 届校园招聘</h1>
+<form id="apply" onsubmit="window.__submitted = true; return false;">
+  <section id="step1">
+    <h3>基本信息</h3>
+    <div class="row" data-expect="basic.name"><label for="xm"><span class="req"></span>姓名：</label><input id="xm"></div>
+    <div class="row" data-expect="none"><label for="nick">昵称：</label><input id="nick"></div>
+    <div class="row" data-expect="basic.hukou"><label for="hk">户口所在地 *</label><input id="hk"></div>
+    <div class="row" data-expect="none"><label for="hobby"><span class="req"></span>兴趣爱好：</label><input id="hobby"></div>
+    <div class="row" data-expect="none"><span class="req">上传简历</span><input type="file" id="cv" style="display:none"><button type="button" onclick="cv.click()">选择文件</button></div>
+    <div class="row" id="host" data-expect="basic.ethnicity"></div>
+    <h3>教育经历（内嵌页面）</h3>
+    <iframe src="steps-frame.html" title="教育经历"></iframe>
+    <p><button type="button" id="next" onclick="step1.hidden = true; step2.hidden = false;">下一步</button></p>
+  </section>
+  <section id="step2" hidden>
+    <h3>实习经历</h3>
+    <div class="row" data-expect="internships[0].company"><label for="gs">公司名称：</label><input id="gs"></div>
+    <div class="row" data-expect="internships[0].title"><label for="zw">职位名称：</label><input id="zw"></div>
+    <p><button type="submit">提交</button></p>
+  </section>
+</form>
+<script>
+  // Web Component：民族下拉放在 open shadow DOM 里
+  customElements.define('nation-field', class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML =
+        '<label for="mz">民族：</label><select id="mz"><option value="">请选择</option><option>汉</option><option>回</option></select>';
+    }
+  });
+  host.append(document.createElement('nation-field'));
+</script>
+</body>
+</html>

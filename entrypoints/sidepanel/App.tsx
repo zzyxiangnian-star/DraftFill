@@ -1,26 +1,55 @@
-import { ListChecks, Undo2 } from 'lucide-react';
+import { ListChecks, Sparkles, Undo2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Logo } from '@/src/components/Logo';
-import { Counts, ItemRow, revealField, sortItems } from '@/src/components/Report';
+import { Counts, isMissingRequired, ItemRow, revealField, sortItems } from '@/src/components/Report';
 import { iconProps } from '@/src/components/icon';
-import type { Request, UndoResult } from '@/src/lib/messages';
-import type { FillReport, FillStatus } from '@/src/lib/fill/fill';
-import { lastReportItem } from '@/src/lib/fill/reportStore';
+import type { FillResult, Request, UndoResult } from '@/src/lib/messages';
+import type { FillItem, FillReport } from '@/src/lib/fill/fill';
+import { lastReportItem, pageChangeItem, type PageChange } from '@/src/lib/fill/reportStore';
 import { Board } from './Board';
 
 type Tab = 'result' | 'board';
 
-const GROUPS: { title: string; statuses: FillStatus[] }[] = [
-  { title: '需要你看一下', statuses: ['err', 'warn'] },
-  { title: '已填写', statuses: ['ok'] },
-  { title: '没有填写', statuses: ['skip'] },
+// 每一项只进第一个符合的分组
+const GROUPS: { title: string; hint?: string; test: (i: FillItem) => boolean }[] = [
+  { title: '必填还空着', hint: '页面标了必填，插件没能填上，提交前请补上。', test: isMissingRequired },
+  { title: '需要你看一下', test: (i) => i.status === 'err' || i.status === 'warn' },
+  { title: '要你自己上传的附件', hint: '浏览器不允许插件替你选文件。点一项定位到上传按钮。', test: (i) => !!i.attach },
+  { title: '已填写', test: (i) => i.status === 'ok' },
+  { title: '没有填写', test: (i) => i.status === 'skip' },
 ];
+
+function groupItems(items: FillItem[]) {
+  const left = new Set(items);
+  return GROUPS.map((g) => {
+    const list = [...left].filter(g.test);
+    list.forEach((i) => left.delete(i));
+    return { ...g, list };
+  });
+}
 
 function Result({ report }: { report: FillReport }) {
   const items = sortItems(report.items);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [change, setChange] = useState<PageChange | null>(null);
   const undone = !!report.undoneAt;
+
+  useEffect(() => {
+    pageChangeItem.getValue().then(setChange);
+    return pageChangeItem.watch(setChange);
+  }, []);
+  const fresh = !undone && change && change.count > 0 && change.at > report.at ? change : null;
+
+  async function fillAgain() {
+    setBusy(true);
+    try {
+      const r = await browser.runtime.sendMessage<Request, FillResult>({ type: 'fill-active-tab' });
+      setNotice(r.ok ? null : r.reason);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function undo() {
     setBusy(true);
@@ -55,13 +84,23 @@ function Result({ report }: { report: FillReport }) {
           </>
         )}
       </section>
+      {fresh && (
+        <section className="card stack enter" role="status">
+          <p style={{ margin: 0 }}>页面上新出现了 {fresh.count} 个能填的字段，可能是到了下一步或展开了新的一段。</p>
+          <div><button className="btn btn-primary" onClick={fillAgain} disabled={busy}><Sparkles {...iconProps} /> 填写新出现的字段</button></div>
+          <p className="small muted" style={{ margin: 0 }}>已经有内容的字段不会被覆盖。</p>
+        </section>
+      )}
+      {!!report.blockedFrames && !undone && (
+        <p className="notice notice-warn small">页面里有 {report.blockedFrames} 个嵌入的页面来自别的网站，浏览器不允许插件读取，里面的内容请自己填写。</p>
+      )}
       {notice && <p className="notice small enter" role="status">{notice}</p>}
-      {GROUPS.map(({ title, statuses }) => {
-        const list = items.filter((i) => statuses.includes(i.status));
+      {groupItems(items).map(({ title, hint, list }) => {
         if (!list.length) return null;
         return (
           <section key={title} className="stack">
             <h3 className="group-title">{title} <span className="muted">{list.length}</span></h3>
+            {hint && <p className="small muted group-hint">{hint}</p>}
             <ul className="report-list">{list.map((item) => <ItemRow key={item.index} item={item} onReveal={undone ? undefined : reveal} />)}</ul>
           </section>
         );

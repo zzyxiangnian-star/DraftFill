@@ -18,6 +18,8 @@ export default defineConfig({
         native: resolve(root, 'native.html'),
         antd: resolve(root, 'antd.html'),
         element: resolve(root, 'element.html'),
+        steps: resolve(root, 'steps.html'),
+        'steps-frame': resolve(root, 'steps-frame.html'),
       },
     },
   },

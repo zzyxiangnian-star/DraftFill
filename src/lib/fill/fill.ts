@@ -3,9 +3,10 @@ import { chooseNumber, chooseOption, type ChoiceResult } from './choice';
 import { describe, detectControls, isVisible, type Control } from './detect';
 import { matchControl } from './match';
 import { safeClick, safeMouseDown, SafetyError } from './safety';
-import { clean, textOf } from './text';
+import { clean, isTag, textOf } from './text';
 import { parsePath, pathIndexLabel, resolveValue } from './values';
 import { guessJob } from '../tracker/guess';
+import { collectRoots } from './roots';
 
 // Filler：按控件类型分派写入，写入后回读页面实际显示的值。只填不交。
 
@@ -20,6 +21,10 @@ export interface FillItem {
   /** 写入的值，或页面回读到的值 */
   value: string;
   note: string;
+  /** 页面标了必填 */
+  required?: boolean;
+  /** 附件上传框（简历、成绩单等），需要用户自己选文件 */
+  attach?: boolean;
 }
 
 export interface FillReport {
@@ -32,6 +37,8 @@ export interface FillReport {
   undoneAt?: number;
   /** 从页面猜出的公司和岗位，用于记到投递看板 */
   job?: { company: string; position: string };
+  /** 来自别的网站的内嵌页面数，浏览器不允许读取 */
+  blockedFrames?: number;
 }
 
 const SKIP_KIND: Partial<Record<Control['kind'], string>> = {
@@ -56,8 +63,10 @@ async function waitFor<T>(fn: () => T | null | undefined, timeout = 1500, step =
 }
 
 function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
-  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype
-    : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  // 用控件自己所在 window 的原型（同源 iframe 里的控件来自另一个 window）
+  const win = (el.ownerDocument.defaultView ?? window) as typeof window;
+  const proto = isTag(el, 'textarea') ? win.HTMLTextAreaElement.prototype
+    : isTag(el, 'select') ? win.HTMLSelectElement.prototype : win.HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   el.focus();
   if (setter) setter.call(el, value); else el.value = value;
@@ -466,8 +475,9 @@ export async function runFill(doc: Document, profile: Profile): Promise<FillRun>
   for (const f of planFill(doc, profile)) {
     const index = entries.length;
     const label = describe(f.control) + (f.path ? (pathIndexLabel(f.path, f.index) ? `（${pathIndexLabel(f.path, f.index)}）` : '') : '');
+    const flags = { ...(f.control.required && { required: true }), ...(f.control.kind === 'file' && { attach: true }) };
     const add = (item: Omit<FillItem, 'index' | 'label'>, written = false, original = '') =>
-      entries.push({ control: f.control, item: { index, label, ...item }, original, written });
+      entries.push({ control: f.control, item: { index, label, ...item, ...flags }, original, written });
 
     if (!f.path) { add({ path: null, status: 'skip', value: '', note: f.reason }); continue; }
     const v = resolveValue(profile, f.path, f.index);
@@ -489,7 +499,14 @@ export async function runFill(doc: Document, profile: Profile): Promise<FillRun>
     url: doc.location?.href ?? '', title: doc.title, at: Date.now(), profileTitle: profile.title,
     items: entries.map((e) => e.item), job: guessJob(doc),
   };
+  const { blockedFrames } = collectRoots(doc);
+  if (blockedFrames) report.blockedFrames = blockedFrames;
   return { report, entries };
+}
+
+/** 多步表单：上次填写之后新出现的、认得出且还空着的字段数。只统计，不填。 */
+export function countNewFillable(doc: Document, profile: Profile, seen: WeakSet<Element>): number {
+  return planFill(doc, profile).filter((f) => f.path && !seen.has(f.control.el) && !currentValue(f.control).trim()).length;
 }
 
 export async function fillDocument(doc: Document, profile: Profile): Promise<FillReport> {

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { describe as describeControl, detectControls } from '../src/lib/fill/detect';
 import { fillDocument, planFill } from '../src/lib/fill/fill';
 import { sampleProfile } from './fixtures/profile';
 import { scorePlan } from './fixtures/score';
@@ -23,6 +24,23 @@ describe.each([
     expect(s.wrong).toBe(0);
     expect(s.falsePositive).toBe(0);
     expect(s.correct / s.expected).toBeGreaterThanOrEqual(0.9);
+  });
+});
+
+describe('必填标记（计划书 V7）', () => {
+  // 对照快照里的星号逐个核对：北森 form-item__required，Moka required-asterisk
+  const required = (file: string) => {
+    load(file);
+    return [...new Set(detectControls(document).filter((c) => c.required).map(describeControl))];
+  };
+  it('北森：13 个必填字段，上传简历、推荐码不是必填', () => {
+    expect(required('beisen-zhuanzhuan.html')).toEqual(['姓名', '性别', '出生日期', '邮箱', '手机号码', '期望工作城市', '到岗时间',
+      '学校名称', '开始时间', '结束时间', '专业名称', '学历', '学位']);
+  });
+  it('Moka：必填的附件、意向城市、起止时间都认出；荣誉、照片等选填的不算', () => {
+    const r = required('moka-danone.html');
+    expect(r).toEqual(expect.arrayContaining(['上传简历', '第二意向城市', '姓名', '性别', '邮箱', '就读时间', '学校名称', '起止时间', '公司名称', '招聘信息来源渠道']));
+    for (const optional of ['英文名', '上传照片', '荣誉类型', '荣誉名称', '获奖时间', '推荐码', '最高学历GPA证明']) expect(r).not.toContain(optional);
   });
 });
 

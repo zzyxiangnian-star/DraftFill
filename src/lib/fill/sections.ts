@@ -1,4 +1,4 @@
-import { clean } from './text';
+import { clean, isEl } from './text';
 
 // 表单分区：用来消除同名字段的歧义，例如“姓名”在家庭成员区就不是本人姓名。
 
@@ -63,7 +63,7 @@ function headingText(h: Element): string {
   let out = '';
   const walk = (n: Node) => {
     if (n.nodeType === Node.TEXT_NODE) { out += n.textContent ?? ''; return; }
-    if (!(n instanceof Element) || n.matches('button, [class*="describe"], [class*="desc"], [class*="tip"], [class*="hint"]')) return;
+    if (!isEl(n) || n.matches('button, [class*="describe"], [class*="desc"], [class*="tip"], [class*="hint"]')) return;
     for (const c of n.childNodes) walk(c);
   };
   walk(h);
