@@ -1,5 +1,5 @@
 import type { Profile } from '../profile/schema';
-import { chooseOption } from './choice';
+import { chooseNumber, chooseOption, type ChoiceResult } from './choice';
 import { describe, detectControls, isVisible, type Control } from './detect';
 import { matchControl } from './match';
 import { safeClick, safeMouseDown, SafetyError } from './safety';
@@ -37,6 +37,7 @@ const SKIP_KIND: Partial<Record<Control['kind'], string>> = {
   file: '附件需要你自己上传',
   checkbox: '复选框需要你自己勾选',
   cascader: '级联选择（省市区等）第二版支持',
+  readonly: '这一项要在弹出的面板里点选，请自己选一下',
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -199,9 +200,55 @@ const ELEMENT: DropdownAdapter = {
   close: pressEscape,
 };
 
+// —— Moka（sd- 组件库）与北森（phoenix 组件库）——
+// 字段结构来自真实页面快照；下拉弹层的类名来自两家页面自带的样式表，快照里弹层没有展开，
+// 所以这两个弹层的写法还没在真页面上验证过。写入后一律回读，对不上就标红，不会悄悄填错。
+
+/** 只保留最里层的匹配元素（点击事件会冒泡到外层） */
+function innermost(els: HTMLElement[]): HTMLElement[] {
+  return els.filter((e) => !els.some((o) => o !== e && e.contains(o)));
+}
+
+function lastVisible(doc: Document, selector: string, exclude: Element): HTMLElement | null {
+  return [...doc.querySelectorAll<HTMLElement>(selector)].filter((p) => !exclude.contains(p) && isVisible(p)).at(-1) ?? null;
+}
+
+function closeByOutsideClick(root: HTMLElement) {
+  pressEscape(root);
+  root.ownerDocument.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  root.ownerDocument.body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+}
+
+const MOKA_PANEL = '[class*="sd-Dropdown-dropdown"], [class*="sd-Select-menu-"], [class*="sd-Select-select-"]';
+const MOKA: DropdownAdapter = {
+  trigger: (root) => root.querySelector<HTMLElement>('input') ?? root,
+  panel: (root) => {
+    const box = root.closest('[class*="sd-Dropdown-container"]');
+    const own = box && [...box.querySelectorAll<HTMLElement>(MOKA_PANEL)].find((p) => !root.contains(p) && isVisible(p));
+    return own ?? lastVisible(root.ownerDocument, MOKA_PANEL, root);
+  },
+  options: (panel) => innermost([...panel.querySelectorAll<HTMLElement>('[class*="sd-Select-item-"], [class*="sd-Select-menu-item"], [class*="sd-Menu-content-item"], [role="option"]')]),
+  scroller: (panel) => panel.querySelector<HTMLElement>('[class*="sd-Select-scrollable"], [class*="ScrollView"]') ?? panel,
+  selected: (root) => (textOf(root.querySelector('[class*="sd-Input-display-value"]')) || root.querySelector('input')?.value || '').trim(),
+  close: closeByOutsideClick,
+};
+
+const PHOENIX: DropdownAdapter = {
+  trigger: (root) => root,
+  panel: (root) => lastVisible(root.ownerDocument, '.phoenix-selectList', root),
+  options: (panel) => [...panel.querySelectorAll<HTMLElement>('.phoenix-selectList__listItem:not(.phoenix-selectList__listItem--disabled)')],
+  scroller: (panel) => panel.querySelector<HTMLElement>('[class*="virtualList-holder"], .phoenix-selectList__contentWraper, .phoenix-selectList__list'),
+  selected: (root) => (root.querySelector('.phoenix-select__placeHolder--show') ? ''
+    : textOf(root.querySelector('.phoenix-select__content')) || root.querySelector('input')?.value || '').trim(),
+  close: closeByOutsideClick,
+};
+
 const optionText = (o: HTMLElement) => (o.getAttribute('title') || textOf(o, 60)).trim();
 
-async function fillCustomSelect(c: Control, value: string, sure: boolean, ad: DropdownAdapter): Promise<Outcome> {
+async function fillCustomSelect(
+  c: Control, value: string, sure: boolean, ad: DropdownAdapter,
+  choose: (options: string[]) => ChoiceResult = (o) => chooseOption(value, o),
+): Promise<Outcome> {
   const root = c.el;
   const trigger = ad.trigger(root);
   safeMouseDown(trigger);
@@ -219,7 +266,7 @@ async function fillCustomSelect(c: Control, value: string, sure: boolean, ad: Dr
     await waitFor(() => ad.options(panel).length > 0, 800);
     const opts = ad.options(panel);
     opts.forEach((o) => seen.add(optionText(o)));
-    const r = chooseOption(value, opts.map(optionText));
+    const r = choose(opts.map(optionText));
     if (r.ok) { found = opts[r.index]!; chosenSure = r.sure; break; }
     lastReason = r.reason;
     if (!scroller || scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) break;
@@ -235,7 +282,7 @@ async function fillCustomSelect(c: Control, value: string, sure: boolean, ad: Dr
     await sleep(300);
     const p2 = ad.panel(root) ?? panel;
     const opts = await waitFor(() => { const o = ad.options(p2); return o.length ? o : null; }, 1500) ?? [];
-    const r = chooseOption(value, opts.map(optionText));
+    const r = choose(opts.map(optionText));
     if (r.ok) { found = opts[r.index]!; chosenSure = r.sure; } else lastReason = r.reason;
   }
 
@@ -275,6 +322,52 @@ async function fillPicker(c: Control, value: string, sure: boolean): Promise<Out
     : fail(input.value, input.value ? `回读为“${input.value}”，和档案不一致` : '日期没有写进去');
 }
 
+/** 年、月分开选：从 YYYY-MM 里取出年或月 */
+function datePartValue(value: string, part: 'year' | 'month'): string | null {
+  const m = /^(\d{4})-(\d{2})/.exec(value);
+  if (!m) return null;
+  return part === 'year' ? m[1]! : String(Number(m[2]));
+}
+
+/** 北森的日期也是 phoenix-select 外壳，点开后是日历面板；能输入就输入，不能就留给用户 */
+async function fillPhoenixDate(c: Control, value: string, sure: boolean): Promise<Outcome> {
+  const root = c.el;
+  safeMouseDown(root);
+  safeClick(root);
+  const panel = await waitFor(() => lastVisible(root.ownerDocument, '.phoenix-calendar, .phoenix-date-picker__wrap, .phoenix-selectList', root));
+  if (!panel) return fail('', '日期面板没有打开');
+  if (panel.matches('.phoenix-selectList')) {
+    closeByOutsideClick(root);
+    return fillCustomSelect(c, value, sure, PHOENIX);
+  }
+  const input = panel.querySelector<HTMLInputElement>('input.phoenix-calendar-input, .phoenix-calendar-input input, .phoenix-calendar-date-input-wrap input');
+  if (!input || input.readOnly) {
+    closeByOutsideClick(root);
+    return skip('日期要在面板里点选，请自己选一下');
+  }
+  const f = formatDate(value, input.getAttribute('placeholder') ?? '', 'auto');
+  setNativeValue(input, f.text);
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+  await sleep(100);
+  const now = PHOENIX.selected(root);
+  if (isVisible(panel)) closeByOutsideClick(root);
+  return sameValue(now, f.text) ? ok(now, sure && !f.padded) : fail(now, now ? `回读为“${now}”，和档案不一致` : '日期没有写进去');
+}
+
+const divRadioChecked = (item: HTMLElement) => !!item.querySelector('.phoenix-radio__dot--checked, .phoenix-radio__circle--checked');
+
+async function fillDivRadio(c: Control, value: string, sure: boolean): Promise<Outcome> {
+  const items = c.items ?? [];
+  const r = chooseOption(value, c.options);
+  if (!r.ok) return skip(r.reason);
+  const item = items[r.index]!;
+  const target = item.querySelector<HTMLElement>('.phoenix-radio__wrapper') ?? item;
+  safeMouseDown(target);
+  safeClick(target);
+  await waitFor(() => divRadioChecked(item), 500);
+  return divRadioChecked(item) ? ok(c.options[r.index]!, sure && r.sure) : fail('', '点击后没有选中');
+}
+
 function currentValue(c: Control): string {
   switch (c.kind) {
     case 'text': case 'textarea': case 'date': case 'month': return (c.el as HTMLInputElement).value;
@@ -288,6 +381,9 @@ function currentValue(c: Control): string {
     case 'antd-select': return ANTD.selected(c.el);
     case 'el-select': return ELEMENT.selected(c.el);
     case 'antd-picker': case 'el-picker': return c.el.querySelector('input')?.value ?? '';
+    case 'moka-select': return MOKA.selected(c.el);
+    case 'phoenix-select': return PHOENIX.selected(c.el);
+    case 'div-radio': return c.items?.some(divRadioChecked) ? 'checked' : '';
     default: return '';
   }
 }
@@ -301,6 +397,14 @@ async function write(c: Control, path: string, value: string, sure: boolean): Pr
     case 'antd-select': return fillCustomSelect(c, value, sure, ANTD);
     case 'el-select': return fillCustomSelect(c, value, sure, ELEMENT);
     case 'antd-picker': case 'el-picker': return fillPicker(c, value, sure);
+    case 'div-radio': return fillDivRadio(c, value, sure);
+    case 'phoenix-select': return isDate ? fillPhoenixDate(c, value, sure) : fillCustomSelect(c, value, sure, PHOENIX);
+    case 'moka-select': {
+      if (!c.part) return fillCustomSelect(c, value, sure, MOKA);
+      const v = datePartValue(value, c.part);
+      if (!v) return skip(`档案里的日期“${value}”格式不对`);
+      return fillCustomSelect(c, v, sure, MOKA, (o) => chooseNumber(v, o));
+    }
     default: return skip(SKIP_KIND[c.kind] ?? '暂不支持这种控件');
   }
 }
@@ -323,8 +427,10 @@ export function planFill(doc: Document, profile: Profile): PlannedField[] {
     const arr = parsePath(m.path);
     let index = 0;
     if (arr && arr.index === null) {
-      index = counters.get(m.path) ?? 0;
-      counters.set(m.path, index + 1);
+      const n = counters.get(m.path) ?? 0;
+      // 年、月分开的两个框属于同一条经历：“月”跟着前面的“年”
+      if (control.part === 'month' && n > 0) index = n - 1;
+      else { index = n; counters.set(m.path, n + 1); }
     }
     return { control, path: m.path, index, sure: m.confidence === 'high', reason: '' };
   });
@@ -365,8 +471,11 @@ export async function runFill(doc: Document, profile: Profile): Promise<FillRun>
     if (v.value === null) { add({ path: f.path, status: 'skip', value: '', note: v.reason }); continue; }
     if (currentValue(f.control).trim()) { add({ path: f.path, status: 'skip', value: '', note: '页面上已经有内容，没有覆盖' }); continue; }
     const original = originalValue(f.control);
+    // 下拉框一次只选一个城市：取档案里的第一个
+    let value = v.value;
+    if (f.path === 'intention.cities' && !['text', 'textarea'].includes(f.control.kind)) value = value.split(/[、,，/;；\s]+/)[0] ?? value;
     try {
-      let o = await write(f.control, f.path, v.value, f.sure);
+      let o = await write(f.control, f.path, value, f.sure);
       if (o.status === 'ok' && HIGH_RISK.test(f.path)) o = { ...o, status: 'warn', note: '重要信息，请核对' };
       add({ path: f.path, ...o }, o.status !== 'skip', original);
     } catch (e) {
@@ -431,6 +540,8 @@ async function restore(e: FillEntry): Promise<boolean> {
       return (await clickClear(c.el, '.ant-picker-clear')) && !c.el.querySelector('input')?.value;
     case 'el-picker':
       return (await clickClear(c.el, '.el-input__clear, .el-range__close-icon, .clear-icon')) && !c.el.querySelector('input')?.value;
+    case 'phoenix-select':
+      return (await clickClear(c.el, '.phoenix-select__clearIcon--show, .phoenix-select__clearIcon')) && !PHOENIX.selected(c.el);
     default:
       return false;
   }

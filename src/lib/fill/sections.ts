@@ -14,7 +14,7 @@ const RULES: [Section, RegExp][] = [
   ['project', /项目/],
   ['campus', /校园|社团|学生干部|在校经历|学生工作|校内/],
   ['award', /获奖|奖励|荣誉|奖学金|奖惩/],
-  ['language', /语言|外语/],
+  ['language', /语言|外语|英语/],
   ['certificate', /证书|资格/],
   ['education', /教育|学历|学习经历|求学/],
   ['skill', /技能|特长/],
@@ -29,7 +29,8 @@ export function classifySection(title: string): Section | null {
   return null;
 }
 
-const HEADING = 'h1, h2, h3, h4, h5, h6, legend, [role="heading"], .ant-card-head-title, .el-card__header, [class*="section-title"], [class*="sectionTitle"], [class*="module-title"], [class*="block-title"], [class*="group-title"]';
+const HEADING = 'h1, h2, h3, h4, h5, h6, legend, [role="heading"], .ant-card-head-title, .el-card__header, [class*="section-title"], [class*="sectionTitle"], [class*="module-title"], [class*="block-title"], [class*="group-title"], [class*="blockTitle"], [id*="_Recruitment_"]:not([name])';
+// 后两个来自真实页面：Moka 的分区标题 blockTitle-xxx；北森的分区标题是带 _Recruitment_ id 的 div（表单本身同 id 但带 name）
 
 function level(h: Element): number {
   const m = /^H([1-6])$/.exec(h.tagName);
@@ -47,7 +48,7 @@ export function sectionOf(el: Element, headings: Element[]): Section | null {
     if (!(pos & Node.DOCUMENT_POSITION_FOLLOWING || pos & Node.DOCUMENT_POSITION_CONTAINED_BY)) break;
     const lv = level(h);
     stack.length = lv;
-    const s = classifySection(h.textContent ?? '');
+    const s = classifySection(headingText(h));
     // h1 一般是页面标题（公司名、招聘名），认不出时不清空
     if (s || lv > 1) stack[lv - 1] = s;
   }
@@ -55,6 +56,18 @@ export function sectionOf(el: Element, headings: Element[]): Section | null {
     if (stack[i] !== undefined) return stack[i] ?? null;
   }
   return null;
+}
+
+/** 标题文字：跳过标题栏里的按钮（“添加”）和说明文字（Moka 的 describe-xxx） */
+function headingText(h: Element): string {
+  let out = '';
+  const walk = (n: Node) => {
+    if (n.nodeType === Node.TEXT_NODE) { out += n.textContent ?? ''; return; }
+    if (!(n instanceof Element) || n.matches('button, [class*="describe"], [class*="desc"], [class*="tip"], [class*="hint"]')) return;
+    for (const c of n.childNodes) walk(c);
+  };
+  walk(h);
+  return out;
 }
 
 export function collectHeadings(root: ParentNode): Element[] {

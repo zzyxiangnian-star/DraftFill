@@ -6,6 +6,7 @@ import { clean, textOf, tokens } from './text';
 export type ControlKind =
   | 'text' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date' | 'month'
   | 'antd-select' | 'el-select' | 'antd-picker' | 'el-picker' | 'cascader'
+  | 'moka-select' | 'phoenix-select' | 'div-radio' | 'readonly'
   | 'file' | 'password' | 'captcha';
 
 export interface Control {
@@ -14,6 +15,12 @@ export interface Control {
   el: HTMLElement;
   /** 单选组里的所有单选按钮 */
   radios?: HTMLInputElement[];
+  /** 没有原生 input 的单选组（如北森）：每个选项的元素 */
+  items?: HTMLElement[];
+  /** 年、月分开选的日期：这个框是年还是月 */
+  part?: 'year' | 'month';
+  /** 起止时间放在同一个标签下时：这个框属于开始还是结束 */
+  range?: 'start' | 'end';
   label: string;
   placeholder: string;
   keys: string[];
@@ -25,7 +32,13 @@ export interface Control {
 const CUSTOM_SELECT = '.ant-select, .el-select, .el-select-v2';
 const CASCADER = '.ant-cascader, .el-cascader';
 const PICKER = '.ant-picker, .el-date-editor';
-const FORM_ITEM = '.ant-form-item, .el-form-item, .form-item, .form-group, [class*="form-item"], [class*="formItem"], [class*="FormItem"], [class*="field-item"], .field, dl, tr, li';
+// 站点组件（以真实页面快照为准，见 tests/fixtures/forms/real）
+const MOKA_SELECT = 'label[class*="sd-Select-container"]';
+const PHOENIX_SELECT = '.phoenix-select';
+const DIV_RADIO = '.phoenix-radio-group';
+const FORM_ITEM = '.ant-form-item, .el-form-item, .form-item, .form-group, [class*="form-item"], [class*="formItem"], [class*="FormItem"], [class*="field-item"], [class*="apply-field"], .field, dl, tr, li';
+/** 只读输入框里像“要点开面板选”的：日期、省市区等 */
+const PICKER_HINT = /选择|日期|时间|年|月|省|市|区|地/;
 const LABELISH = '.ant-form-item-label, .el-form-item__label, label, [class*="label"], [class*="Label"], th, dt, [class*="title"]';
 const CAPTCHA = /验证码|校验码|captcha|verify|动态码/i;
 const MAX_LABEL = 30;
@@ -102,7 +115,7 @@ function labelOf(anchor: HTMLElement, input: HTMLElement | null, isGroup: boolea
   }
   // 4. 外层表单项容器里的标签（Ant Design、Element、常见自研表单）
   let n: Element | null = anchor.parentElement;
-  for (let depth = 0; n && depth < 6; n = n.parentElement, depth++) {
+  for (let depth = 0; n && depth < 8; n = n.parentElement, depth++) {
     if (n.matches('form, body')) break;
     if (n.matches(FORM_ITEM)) {
       const t = labelInContainer(n, anchor, isGroup);
@@ -156,6 +169,21 @@ function keysOf(...els: (Element | null)[]): string[] {
   return out;
 }
 
+/** Moka 的“年”“月”分开选：同一个字段里有 4 个框时，前两个是开始、后两个是结束 */
+function datePart(root: HTMLElement, input: HTMLInputElement | null): Partial<Control> {
+  const ph = (input?.getAttribute('placeholder') ?? '').trim();
+  if (ph !== '年' && ph !== '月') return {};
+  const extra: Partial<Control> = { part: ph === '年' ? 'year' : 'month' };
+  const field = root.closest(FORM_ITEM);
+  if (field) {
+    const parts = [...field.querySelectorAll<HTMLInputElement>(`${MOKA_SELECT} input`)]
+      .filter((i) => /^[年月]$/.test((i.getAttribute('placeholder') ?? '').trim()));
+    const i = input ? parts.indexOf(input) : -1;
+    if (parts.length === 4 && i >= 0) extra.range = i < 2 ? 'start' : 'end';
+  }
+  return extra;
+}
+
 function nativeKind(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): ControlKind | null {
   if (el instanceof HTMLTextAreaElement) return 'textarea';
   if (el instanceof HTMLSelectElement) return 'select';
@@ -197,14 +225,26 @@ export function detectControls(doc: Document): Control[] {
   };
 
   // 自定义组件：先认出根节点，它们内部的原生 input 不再单独算
-  for (const root of doc.querySelectorAll<HTMLElement>(`${CASCADER}, ${CUSTOM_SELECT}, ${PICKER}`)) {
+  const roots = `${CASCADER}, ${CUSTOM_SELECT}, ${PICKER}, ${MOKA_SELECT}, ${PHOENIX_SELECT}, ${DIV_RADIO}`;
+  for (const root of doc.querySelectorAll<HTMLElement>(roots)) {
     if (!isVisible(root) || [...consumed].some((c) => c.contains(root))) continue;
-    consumed.add(root);
     const input = root.querySelector<HTMLInputElement>('input');
+    if (root.matches(DIV_RADIO)) {
+      // 有原生单选按钮的交给下面的通用逻辑
+      if (root.querySelector('input[type=radio]')) continue;
+      const items = [...root.querySelectorAll<HTMLElement>('.phoenix-radio')];
+      if (!items.length) continue;
+      consumed.add(root);
+      push('div-radio', root, null, { items, options: items.map((i) => textOf(i.querySelector('.phoenix-radio__radio-text') ?? i)) });
+      continue;
+    }
+    consumed.add(root);
     if (root.matches(CASCADER)) push('cascader', root, input);
     else if (root.matches('.ant-picker')) push('antd-picker', root, input);
     else if (root.matches('.el-date-editor')) push('el-picker', root, input);
     else if (root.matches('.ant-select')) push('antd-select', root, input);
+    else if (root.matches(MOKA_SELECT)) push('moka-select', root, input, datePart(root, input));
+    else if (root.matches(PHOENIX_SELECT)) push('phoenix-select', root, input);
     else push('el-select', root, input);
   }
 
@@ -213,7 +253,12 @@ export function detectControls(doc: Document): Control[] {
     const kind = nativeKind(el);
     if (!kind || el.disabled) continue;
     if (kind !== 'radio' && kind !== 'checkbox' && kind !== 'file' && !isVisible(el)) continue;
-    if (el instanceof HTMLInputElement && el.readOnly && kind === 'text') continue;
+    if (el instanceof HTMLInputElement && el.readOnly && kind === 'text') {
+      // 只读框一般是点开面板选的（日期、省市区），列出来告诉用户要自己选
+      const ph = el.getAttribute('placeholder') ?? '';
+      if (isVisible(el) && PICKER_HINT.test(ph)) push('readonly', el, el);
+      continue;
+    }
 
     if (kind === 'radio') {
       const r = el as HTMLInputElement;

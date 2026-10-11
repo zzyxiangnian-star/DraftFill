@@ -16,8 +16,18 @@ export function concretePath(path: string | null, index: number): string {
   return path.replace('[]', `[${index}]`);
 }
 
-export function scorePlan(plan: Pick<PlannedField, 'control' | 'path' | 'index'>[]): Score {
+/** root 给出时，页面上标了答案却完全没被发现的字段也算漏认 */
+export function scorePlan(plan: Pick<PlannedField, 'control' | 'path' | 'index'>[], root?: ParentNode): Score {
   const s: Score = { expected: 0, correct: 0, wrong: 0, missed: 0, falsePositive: 0, details: [] };
+  if (root) {
+    for (const box of root.querySelectorAll('[data-expect]')) {
+      const expect = box.getAttribute('data-expect')!;
+      if (expect === 'none' || plan.some((f) => box.contains(f.control.el))) continue;
+      s.expected++;
+      s.missed++;
+      s.details.push({ label: (box.textContent ?? '').trim().slice(0, 12), expect, got: '没发现这个控件' });
+    }
+  }
   for (const f of plan) {
     const expect = f.control.el.closest('[data-expect]')?.getAttribute('data-expect');
     if (!expect) continue;

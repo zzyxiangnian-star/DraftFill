@@ -38,16 +38,24 @@ function scoreText(text: string, aliases: string[], base: number): number {
   return best;
 }
 
+// 只会是文本框的字段：页面上这个标签下的下拉框（如手机号前面的区号）不是它
+const TEXT_ONLY = new Set(['basic.name', 'basic.phone', 'basic.email', 'basic.idNumber', 'basic.address']);
+const CHOICE_KINDS = new Set<Control['kind']>(['select', 'radio', 'div-radio', 'antd-select', 'el-select', 'moka-select', 'phoenix-select', 'cascader']);
+
 function scoreAlias(c: Control, a: Alias): number {
   const label = clean(c.label);
   const ph = clean(c.placeholder);
   const all = `${label}|${ph}`;
   if (a.exclude?.some((x) => all.includes(clean(x)))) return 0;
+  if (TEXT_ONLY.has(a.path) && CHOICE_KINDS.has(c.kind)) return 0;
 
   const known = c.section !== null;
   if (known && !a.home.includes(c.section!)) return 0;
   // 泛称只在字段的主分区里算数
-  const aliases = known && c.section === a.home[0] ? [...a.strong, ...(a.ctx ?? [])] : a.strong;
+  let aliases = known && c.section === a.home[0] ? [...a.strong, ...(a.ctx ?? [])] : a.strong;
+  // “就读时间：年 月 - 年 月”这类合在一起的起止时间
+  if (c.range && a.range && known && c.section === a.home[0]) aliases = [...aliases, ...a.range];
+  if (c.part && !/\.(start|end|date)$|birthDate$/.test(a.path)) return 0;
 
   let s = Math.max(scoreText(label, aliases, CONTAINS), scoreText(ph, aliases, PLACEHOLDER));
   if (a.keys && c.keys.length) {
@@ -75,7 +83,7 @@ export function matchControl(c: Control, profile: Profile): MatchResult {
   }
   const close = second && best.score - second.score < MARGIN;
   return {
-    path: best.path,
+    path: c.range === 'end' ? best.path.replace(/\.start$/, '.end') : best.path,
     score: best.score,
     confidence: best.score >= HIGH && !close ? 'high' : 'low',
     runnerUp: close ? second.path : undefined,

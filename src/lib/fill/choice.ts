@@ -52,3 +52,12 @@ export function chooseOption(value: string, options: string[]): ChoiceResult {
   if (partial.length > 1 || syn.length > 1) return { ok: false, reason: '有多个相近的选项，请自己选' };
   return { ok: false, reason: `选项里没有“${value}”` };
 }
+
+/** 年、月这类数字选项：“9”“09”“9月”“2024年”都按数字比较 */
+export function chooseNumber(value: string, options: string[]): ChoiceResult {
+  const n = Number(value);
+  if (!value || Number.isNaN(n)) return { ok: false, reason: '档案里没有这一项' };
+  const hits = options.map((o, i) => (Number(/\d+/.exec(o)?.[0] ?? NaN) === n ? i : -1)).filter((i) => i >= 0);
+  if (hits.length === 1) return { ok: true, index: hits[0]!, sure: true };
+  return { ok: false, reason: hits.length ? '有多个相近的选项，请自己选' : `选项里没有“${value}”` };
+}
