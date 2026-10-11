@@ -4,6 +4,7 @@ import { defineConfig } from '@playwright/test';
 // 先运行 npm run build 和 npm run fixtures。
 export default defineConfig({
   testDir: 'tests/e2e',
+  testIgnore: 'demo.spec.ts',
   timeout: 60_000,
   workers: 1,
   reporter: [['list']],

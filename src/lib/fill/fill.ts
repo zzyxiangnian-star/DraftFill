@@ -5,6 +5,7 @@ import { matchControl } from './match';
 import { safeClick, safeMouseDown, SafetyError } from './safety';
 import { clean, textOf } from './text';
 import { parsePath, pathIndexLabel, resolveValue } from './values';
+import { guessJob } from '../tracker/guess';
 
 // Filler：按控件类型分派写入，写入后回读页面实际显示的值。只填不交。
 
@@ -29,6 +30,8 @@ export interface FillReport {
   items: FillItem[];
   /** 撤销时间；撤销后结果只作记录 */
   undoneAt?: number;
+  /** 从页面猜出的公司和岗位，用于记到投递看板 */
+  job?: { company: string; position: string };
 }
 
 const SKIP_KIND: Partial<Record<Control['kind'], string>> = {
@@ -482,7 +485,10 @@ export async function runFill(doc: Document, profile: Profile): Promise<FillRun>
       add({ path: f.path, status: 'err', value: '', note: e instanceof SafetyError ? e.message : `填写出错：${String(e)}` }, true, original);
     }
   }
-  const report = { url: doc.location?.href ?? '', title: doc.title, at: Date.now(), profileTitle: profile.title, items: entries.map((e) => e.item) };
+  const report: FillReport = {
+    url: doc.location?.href ?? '', title: doc.title, at: Date.now(), profileTitle: profile.title,
+    items: entries.map((e) => e.item), job: guessJob(doc),
+  };
   return { report, entries };
 }
 

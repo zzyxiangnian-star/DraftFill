@@ -16,7 +16,8 @@
     "test": "vitest run",
     "postinstall": "wxt prepare",
     "fixtures": "vite build --config tests/fixtures/vite.config.ts && rolldown tests/e2e/probe.ts --format iife --file tests/fixtures/dist/probe.js",
-    "test:e2e": "npm run build && npm run fixtures && playwright test"
+    "test:e2e": "npm run build && npm run fixtures && playwright test",
+    "demo": "npm run build && npm run fixtures && playwright test --config playwright.demo.config.ts"
   },
   "dependencies": {
     "lucide-react": "^1.55.0",

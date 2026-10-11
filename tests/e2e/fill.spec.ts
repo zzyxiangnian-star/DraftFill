@@ -145,3 +145,29 @@ for (const [file, name] of [['a-classic.pdf', '王小明'], ['b-kv.docx', '李�
     await page.close();
   });
 }
+
+test('侧边栏投递看板：填完记一条、改状态、导出表格', async () => {
+  const r = await run('native');
+  await sw.evaluate((rep) => chrome.storage.local.set({ lastReport: rep }), r.report);
+  await sw.evaluate(() => chrome.storage.local.remove('applications'));
+  await r.close();
+  const id = new URL(sw.url()).host;
+  const page = await ctx.newPage();
+  await page.setViewportSize({ width: 400, height: 760 });
+  await page.goto(`chrome-extension://${id}/sidepanel.html`);
+  await page.getByRole('tab', { name: '投递看板' }).click();
+  await page.getByLabel('公司').fill('示例公司');
+  await page.getByLabel('岗位').fill('后端开发');
+  await page.getByRole('button', { name: '记到看板' }).click();
+  await expect(page.locator('.app-item')).toHaveCount(1);
+  await expect(page.getByText('刚填写的页面已经记过了')).toBeVisible();
+  await page.getByLabel('状态', { exact: true }).selectOption('面试');
+  type Stored = { applications: { items: { company: string; status: string; url: string }[] } };
+  await expect.poll(async () => ((await sw.evaluate(() => chrome.storage.local.get('applications'))) as Stored).applications.items[0])
+    .toMatchObject({ company: '示例公司', status: '面试', url: expect.stringContaining('native.html') });
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: '导出表格' }).click();
+  expect((await download).suggestedFilename()).toMatch(/^wangshen-applications-\d{8}\.csv$/);
+  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
+  await page.close();
+});

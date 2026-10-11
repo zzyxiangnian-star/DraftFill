@@ -1,20 +1,24 @@
 import { normalizeProfile } from './normalize';
+import { normalizeApplication, type Application } from '../tracker/applications';
 import { newId, SCHEMA_VERSION, type Profile } from './schema';
 
-// 备份文件格式。只含档案，不含 API Key（计划书第 7 节）。
+// 备份文件格式。含档案和投递记录，不含 API Key（计划书第 7 节）。
+// applications 是后来加的，旧备份没有这一项，导入时当作空列表。
 export interface BackupFile {
   app: 'wangshen-helper';
   schemaVersion: number;
   exportedAt: string;
   profiles: Profile[];
+  applications?: Application[];
 }
 
-export function exportBackup(profiles: Profile[]): string {
+export function exportBackup(profiles: Profile[], applications: Application[] = []): string {
   const file: BackupFile = {
     app: 'wangshen-helper',
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     profiles,
+    applications,
   };
   return JSON.stringify(file, null, 2);
 }
@@ -26,7 +30,7 @@ export function backupFileName(date = new Date()): string {
 }
 
 export type ImportResult =
-  | { ok: true; profiles: Profile[] }
+  | { ok: true; profiles: Profile[]; applications: Application[] }
   | { ok: false; reason: string };
 
 /**
@@ -43,22 +47,23 @@ export function parseBackup(text: string, existingTitles: string[] = []): Import
   if (typeof data !== 'object' || data === null || (data as { app?: unknown }).app !== 'wangshen-helper') {
     return { ok: false, reason: '这不是网申助手导出的备份文件。' };
   }
-  const { schemaVersion, profiles } = data as Partial<BackupFile>;
+  const { schemaVersion, profiles, applications } = data as Partial<BackupFile>;
+  const apps = Array.isArray(applications) ? applications.map(normalizeApplication) : [];
   if (typeof schemaVersion === 'number' && schemaVersion > SCHEMA_VERSION) {
     return { ok: false, reason: '这份备份来自更新版本的网申助手，请先更新插件再导入。' };
   }
-  if (!Array.isArray(profiles) || profiles.length === 0) {
+  if ((!Array.isArray(profiles) || profiles.length === 0) && !apps.length) {
     return { ok: false, reason: '备份文件里没有档案。' };
   }
 
   const titles = new Set(existingTitles);
   const now = Date.now();
-  const result = profiles.map((raw) => {
+  const result = (profiles ?? []).map((raw) => {
     const p = normalizeProfile(raw);
     let title = p.title || '导入的档案';
     while (titles.has(title)) title += '（导入）';
     titles.add(title);
     return { ...p, id: newId(), title, basedOn: '', updatedAt: now };
   });
-  return { ok: true, profiles: result };
+  return { ok: true, profiles: result, applications: apps };
 }

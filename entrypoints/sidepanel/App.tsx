@@ -1,4 +1,4 @@
-import { ClipboardList, ListChecks, Undo2 } from 'lucide-react';
+import { ListChecks, Undo2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Logo } from '@/src/components/Logo';
 import { Counts, ItemRow, revealField, sortItems } from '@/src/components/Report';
@@ -6,6 +6,7 @@ import { iconProps } from '@/src/components/icon';
 import type { Request, UndoResult } from '@/src/lib/messages';
 import type { FillReport, FillStatus } from '@/src/lib/fill/fill';
 import { lastReportItem } from '@/src/lib/fill/reportStore';
+import { Board } from './Board';
 
 type Tab = 'result' | 'board';
 
@@ -49,7 +50,7 @@ function Result({ report }: { report: FillReport }) {
           <p className="small muted">这次填写已经撤销，下面的结果只作记录。</p>
         ) : (
           <>
-            <p className="small muted">插件没有提交。点下面任意一项可以在页面上定位，检查无误后请自己提交。</p>
+            <p className="small muted">插件没有提交。点下面任意一项可以在页面上定位，检查无误后请自己提交。提交后可以到「投递看板」记一条。</p>
             <div><button className="btn btn-secondary" onClick={undo} disabled={busy}><Undo2 {...iconProps} /> 撤销本次填写</button></div>
           </>
         )}
@@ -96,11 +97,7 @@ export function App() {
           </section>
         )
       ) : (
-        <section className="card-plain empty enter" key="board">
-          <ClipboardList size={28} strokeWidth={1.5} />
-          <h2>还没有投递记录</h2>
-          <p className="small">每次填完可以记一条：公司、岗位、链接、所用档案和状态，支持导出 CSV。</p>
-        </section>
+        <Board report={report} />
       )}
     </div>
   );
