@@ -15,6 +15,10 @@ export interface Provider {
   /** 插件需要访问的地址（按需申请权限） */
   origin: string;
   note?: string;
+  /** 不支持 response_format: json_object（靠提示词要求 JSON） */
+  noJsonMode?: boolean;
+  /** 没有 GET /models，不能“获取可用模型” */
+  noModelList?: boolean;
 }
 
 export const PROVIDERS: Provider[] = [
@@ -25,12 +29,12 @@ export const PROVIDERS: Provider[] = [
   },
   {
     id: 'qwen', name: '通义千问（阿里云百炼）', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus',
-    models: ['qwen-plus', 'qwen-turbo', 'qwen-max'], keyUrl: 'https://bailian.console.aliyun.com/', origin: 'https://dashscope.aliyuncs.com/*',
-    note: '新用户有免费额度。',
+    models: ['qwen-plus', 'qwen-turbo', 'qwen-max'], keyUrl: 'https://bailian.console.aliyun.com/?apiKey=1', origin: 'https://dashscope.aliyuncs.com/*',
+    note: '新用户有免费额度。', noModelList: true,
   },
   {
     id: 'glm', name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.7-flash',
-    models: ['glm-4.7-flash'], keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys', origin: 'https://open.bigmodel.cn/*',
+    models: ['glm-4.7-flash'], noModelList: true, keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys', origin: 'https://open.bigmodel.cn/*',
     note: 'glm-4.7-flash 免费，但同时只能处理一个请求。',
   },
   {
@@ -40,12 +44,23 @@ export const PROVIDERS: Provider[] = [
   {
     id: 'doubao', name: '豆包（火山方舟）', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-1-6-flash-250828',
     models: ['doubao-seed-1-6-flash-250828'], keyUrl: 'https://console.volcengine.com/ark', origin: 'https://ark.cn-beijing.volces.com/*',
-    note: '要先在火山方舟控制台“开通管理”里开通模型；提示模型不存在时，在高级设置里换成控制台显示的模型 ID。',
+    note: '要先在火山方舟控制台“开通管理”里开通模型；提示模型不存在时，在高级设置里换成控制台显示的模型 ID 或接入点 ID（ep- 开头）。',
+    noModelList: true,
   },
   {
     id: 'siliconflow', name: '硅基流动', baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen3-8B',
     models: ['Qwen/Qwen3-8B', 'deepseek-ai/DeepSeek-V3'], keyUrl: 'https://cloud.siliconflow.cn/account/ak', origin: 'https://api.siliconflow.cn/*',
     note: '一个 Key 能用多家开源模型，部分小模型免费。',
+  },
+  {
+    id: 'hunyuan', name: '腾讯混元', baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1', model: 'hunyuan-lite',
+    models: ['hunyuan-lite', 'hunyuan-turbos-latest'], keyUrl: 'https://console.cloud.tencent.com/hunyuan/api-key', origin: 'https://api.hunyuan.cloud.tencent.com/*',
+    note: 'hunyuan-lite 免费，写长文效果一般。', noJsonMode: true, noModelList: true,
+  },
+  {
+    id: 'qianfan', name: '百度千帆（文心）', baseUrl: 'https://qianfan.baidubce.com/v2', model: 'ernie-speed-128k',
+    models: ['ernie-speed-128k', 'ernie-lite-8k'], keyUrl: 'https://console.bce.baidu.com/qianfan/ais/console/onlineService', origin: 'https://qianfan.baidubce.com/*',
+    note: 'ernie-speed、ernie-lite 免费。', noModelList: true,
   },
   {
     id: 'custom', name: '其他（兼容 OpenAI 接口）', baseUrl: '', model: '', models: [], keyUrl: '', origin: '',

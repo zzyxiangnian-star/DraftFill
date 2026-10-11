@@ -1,4 +1,4 @@
-import { Check, ClipboardCopy, Loader2, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Check, ClipboardCopy, KeyRound, Loader2, Settings, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useRef, useState, type ReactNode } from 'react';
 import { iconProps } from '@/src/components/icon';
 import { providerById } from '@/src/lib/ai/providers';
@@ -12,6 +12,7 @@ import type { Profile, ProfileStore } from '@/src/lib/profile/schema';
 import { updateProfile } from '@/src/lib/profile/store';
 import { AiSettingsCard, ensureAccess, useAiSettings } from './AiSettingsCard';
 import { AskAi } from './AskAi';
+import { SkillSettings } from './SkillSettings';
 
 type Tool = 'ask' | 'diagnose' | 'polish' | 'jd' | 'question';
 const TOOLS: { id: Tool; label: string; desc: string }[] = [
@@ -64,7 +65,7 @@ function RunButton({ r, label, onClick, disabled }: { r: ReturnType<typeof useRu
       <button className="btn btn-primary" onClick={onClick} disabled={r.busy || !r.ready || disabled}>
         {r.busy ? <Loader2 {...iconProps} className="spin" /> : <Sparkles {...iconProps} />} {r.busy ? 'AI 正在写…' : label}</button>
       {r.busy && <button className="btn btn-text" onClick={r.cancel}><X {...iconProps} /> 取消</button>}
-      {!r.ready && <span className="small muted">先在上面填好 API Key。</span>}
+      {!r.ready && <span className="small muted">先点右上角「设置」填好 API Key。</span>}
     </div>
   );
 }
@@ -298,18 +299,54 @@ function OpenQuestion({ profile }: { profile: Profile }) {
   );
 }
 
+type View = 'main' | 'api' | 'skills';
+
 export function AiPage({ store, commit }: { store: ProfileStore; commit: (s: ProfileStore, immediate?: boolean) => void }) {
+  const settings = useAiSettings();
+  const [view, setView] = useState<View>('main');
   const [tool, setTool] = useState<Tool>('ask');
   const [profileId, setProfileId] = useState(store.activeId);
   const profile = store.profiles.find((p) => p.id === profileId) ?? store.profiles[0];
   const meta = TOOLS.find((t) => t.id === tool)!;
+
+  if (view !== 'main') {
+    return (
+      <>
+        <div className="ai-head">
+          <div className="stack">
+            <h1>AI 设置</h1>
+            <p className="muted">选服务商、填 API Key；按需开关回答问题时用到的技能。</p>
+          </div>
+          <button className="btn btn-secondary" onClick={() => setView('main')}><ArrowLeft {...iconProps} /> 返回</button>
+        </div>
+        <div>
+          <div className="seg" role="tablist" aria-label="设置项">
+            <button role="tab" className="seg-item" aria-selected={view === 'api'} onClick={() => setView('api')}>API</button>
+            <button role="tab" className="seg-item" aria-selected={view === 'skills'} onClick={() => setView('skills')}>技能</button>
+          </div>
+        </div>
+        {view === 'api' ? <AiSettingsCard /> : <SkillSettings />}
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="stack">
-        <h1>AI 助手</h1>
-        <p className="muted">诊断和润色简历、分析岗位、写网申问答题。每个功能都配了专门的方法，只依据你档案里的真实经历，不编造。</p>
+      <div className="ai-head">
+        <div className="stack">
+          <h1>AI 助手</h1>
+          <p className="muted">诊断和润色简历、分析岗位、写网申问答题。每个功能都配了专门的方法，只依据你档案里的真实经历，不编造。</p>
+        </div>
+        <button className="btn btn-secondary" onClick={() => setView('api')}><Settings {...iconProps} /> 设置</button>
       </div>
-      <AiSettingsCard />
+      {settings && !settings.apiKey.trim() && (
+        <div className="notice row" style={{ flexWrap: 'wrap' }}>
+          <KeyRound {...iconProps} aria-hidden />
+          <span>还没有填写 API Key，先选一家 AI 服务商。</span>
+          <span className="spacer" />
+          <button className="btn btn-primary" onClick={() => setView('api')}>去设置</button>
+        </div>
+      )}
       {!profile ? <p className="muted">还没有档案，先建一份。</p> : (
         <section className="card-plain stack" style={{ gap: 'var(--space-4)' }}>
           <div className="row" style={{ flexWrap: 'wrap' }}>

@@ -260,6 +260,20 @@ test('AI 助手：问问题自动选技能；简历诊断按格式展示；发�
   expect(aiRequests.length).toBe(2); // 关键词选中技能，不用再问模型
   for (const x of [p.basic.name, p.basic.phone, p.basic.email, p.basic.idNumber, '王大明']) expect(sent).not.toContain(x);
   expect(sent).toContain('示例科技');
+
+  // 设置收在「设置」按钮里：API 和技能两栏；关掉的技能不出现在手动选择里
+  await page.getByRole('button', { name: '设置' }).click();
+  await expect(page.getByRole('heading', { name: 'AI 服务商' })).toBeVisible();
+  await page.getByRole('tab', { name: '技能' }).click();
+  await page.getByRole('switch', { name: '启用群面准备' }).uncheck({ force: true });
+  await expect(page.getByText(/已开启 \d+ \/ \d+ 个技能/)).toBeVisible();
+  if (process.env.SHOT_AI_SET) await page.screenshot({ path: process.env.SHOT_AI_SET, fullPage: true });
+  await page.getByRole('button', { name: '返回' }).click();
+  await page.getByRole('tab', { name: '问 AI' }).click();
+  await expect(page.getByRole('combobox', { name: '用哪个技能回答' }).locator('option', { hasText: '模拟面试' })).toHaveCount(1);
+  await expect(page.getByRole('combobox', { name: '用哪个技能回答' }).locator('option', { hasText: '群面准备' })).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: '用哪个技能回答' }).locator('option', { hasText: '签约与权益' })).toHaveCount(1);
+  await sw.evaluate(() => chrome.storage.local.remove('aiSkillPrefs'));
   await page.close();
 });
 

@@ -29,7 +29,8 @@ describe('发给 AI 的内容', () => {
 describe('AI 设置', () => {
   it('选服务商后只需要 Key', () => {
     expect(endpointOf({ provider: 'deepseek', apiKey: ' sk-1 ', model: '', baseUrl: '' }))
-      .toEqual({ baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-flash', apiKey: 'sk-1', name: 'DeepSeek' });
+      .toEqual({ baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-flash', apiKey: 'sk-1', name: 'DeepSeek', jsonMode: true });
+    expect(endpointOf({ provider: 'hunyuan', apiKey: 'k', model: '', baseUrl: '' })).toMatchObject({ model: 'hunyuan-lite', jsonMode: false });
     expect(endpointOf({ provider: 'deepseek', apiKey: '', model: '', baseUrl: '' })).toHaveProperty('error');
     expect(endpointOf({ provider: 'custom', apiKey: 'k', model: 'm', baseUrl: 'https://x.com/v1/chat/completions' }))
       .toMatchObject({ baseUrl: 'https://x.com/v1', model: 'm' });

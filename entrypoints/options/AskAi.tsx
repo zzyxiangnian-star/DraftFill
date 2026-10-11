@@ -2,7 +2,7 @@ import { ArrowUp, Loader2, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-re
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Markdown } from '@/src/components/Markdown';
 import { iconProps } from '@/src/components/icon';
-import { CHAT_SKILLS, skillById, systemPrompt } from '@/src/lib/ai/chatSkills';
+import { skillById, systemPrompt } from '@/src/lib/ai/chatSkills';
 import { chat, type ChatMessage } from '@/src/lib/ai/client';
 import { providerById } from '@/src/lib/ai/providers';
 import { NOT_SENT_LABEL, resumeForAi, scrub } from '@/src/lib/ai/redact';
@@ -10,6 +10,8 @@ import { routeQuestion } from '@/src/lib/ai/router';
 import { aiSettingsItem, endpointOf } from '@/src/lib/ai/settings';
 import type { Profile } from '@/src/lib/profile/schema';
 import { ensureAccess, useAiSettings } from './AiSettingsCard';
+import { enabledSkills, DEFAULT_SKILL_PREFS } from '@/src/lib/ai/skillPrefs';
+import { useSkillPrefs } from './SkillSettings';
 
 // “问 AI”：像聊天一样提问，插件自动挑最合适的技能来回答（也可以手动指定）。
 
@@ -24,14 +26,17 @@ function pick<T>(xs: T[], n: number): T[] {
 
 export function AskAi({ profile }: { profile: Profile }) {
   const settings = useAiSettings();
+  const prefs = useSkillPrefs()[0] ?? DEFAULT_SKILL_PREFS;
+  const skills = enabledSkills(prefs);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [manual, setManual] = useState('auto');
+  const chosen = skills.some((s) => s.id === manual) ? manual : 'auto';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ctl = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
-  const suggestions = useMemo(() => pick(CHAT_SKILLS.filter((s) => s.id !== 'general').map((s) => s.examples[0]!), 6), []);
+  const suggestions = useMemo(() => pick(enabledSkills(prefs).filter((s) => s.id !== 'general').map((s) => s.examples[0]!), 6), [prefs]);
   const provider = providerById(settings?.provider ?? '')?.name ?? 'AI 服务商';
   const ready = !!settings?.apiKey.trim();
 
@@ -54,11 +59,11 @@ export function AskAi({ profile }: { profile: Profile }) {
     const signal = ctl.current.signal;
     try {
       const previous = [...turns].reverse().find((t) => t.skill)?.skill;
-      const route = manual === 'auto'
-        ? await routeQuestion(ep, scrub(q, profile), previous, signal)
-        : { skill: skillById(manual)!, by: 'manual' as const };
+      const route = chosen === 'auto'
+        ? await routeQuestion(ep, scrub(q, profile), previous, signal, skills)
+        : { skill: skillById(chosen)!, by: 'manual' as const };
       const msgs: ChatMessage[] = [
-        { role: 'system', content: systemPrompt(route.skill, route.skill.needsResume ? resumeForAi(profile) : null) },
+        { role: 'system', content: systemPrompt(route.skill, route.skill.needsResume && prefs.attachResume ? resumeForAi(profile) : null) },
         ...history.slice(-MAX_HISTORY).map((t) => ({ role: t.role, content: scrub(t.content, profile) })),
       ];
       const answer = await chat(ep, msgs, { temperature: 0.6, signal });
@@ -99,13 +104,13 @@ export function AskAi({ profile }: { profile: Profile }) {
       {error && <div className="notice notice-err enter" role="alert">{error}</div>}
 
       <div className="composer">
-        <textarea className="input textarea" rows={3} value={input} placeholder={ready ? '输入问题，Ctrl + Enter 发送。可以直接粘贴岗位描述、面试通知、你写的回答' : '先在上面填好 API Key'}
+        <textarea className="input textarea" rows={3} value={input} placeholder={ready ? '输入问题，Ctrl + Enter 发送。可以直接粘贴岗位描述、面试通知、你写的回答' : '先点右上角「设置」填好 API Key'}
           disabled={!ready} onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }} />
         <div className="row" style={{ flexWrap: 'wrap' }}>
-          <select className="input select skill-pick" aria-label="用哪个技能回答" value={manual} onChange={(e) => setManual(e.target.value)}>
+          <select className="input select skill-pick" aria-label="用哪个技能回答" value={chosen} onChange={(e) => setManual(e.target.value)}>
             <option value="auto">自动选择技能</option>
-            {CHAT_SKILLS.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {skills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
           <span className="spacer" />
           {turns.length > 0 && !busy && <button className="btn btn-text" onClick={() => { setTurns([]); setError(null); }}><RotateCcw {...iconProps} /> 新对话</button>}
@@ -115,7 +120,7 @@ export function AskAi({ profile }: { profile: Profile }) {
       </div>
       <p className="privacy small">
         <ShieldCheck {...iconProps} aria-hidden />
-        <span>问题会发给 {provider}；需要用到你经历的技能（如简历、面试、自我介绍）会附上档案里的经历。不会发送{NOT_SENT_LABEL}。</span>
+        <span>问题会发给 {provider}；{prefs.attachResume ? '需要用到你经历的技能（如简历、面试、自我介绍）会附上档案里的经历。' : '不附上档案里的经历（可在设置 → 技能里打开）。'}不会发送{NOT_SENT_LABEL}。</span>
       </p>
     </div>
   );

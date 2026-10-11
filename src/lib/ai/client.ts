@@ -44,7 +44,7 @@ export async function chat(ep: Endpoint, messages: ChatMessage[], opts: { temper
     signal: opts.signal,
     body: JSON.stringify({
       model: ep.model, messages, temperature: opts.temperature ?? 0.7, stream: false,
-      ...(opts.json && { response_format: { type: 'json_object' } }),
+      ...(opts.json && ep.jsonMode !== false && { response_format: { type: 'json_object' } }),
     }),
   }, 120_000);
   const data = await res.json().catch(() => null) as { choices?: { message?: { content?: string } }[] } | null;

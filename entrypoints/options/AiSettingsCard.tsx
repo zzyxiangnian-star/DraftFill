@@ -44,7 +44,9 @@ export function AiSettingsCard() {
 
   const p = providerById(draft.provider) ?? PROVIDERS[0]!;
   const set = (patch: Partial<AiSettings>) => { setDraft({ ...draft, ...patch }); setStatus(null); };
-  const modelOptions = p.id === 'custom' ? [] : [...new Set([p.model, ...p.models, ...models, draft.model].filter(Boolean))];
+  // 用已保存的模型（而不是正在输入的）补进下拉，免得手动输入时第一个字就把输入框换成下拉
+  const savedModel = saved?.provider === draft.provider ? saved.model : '';
+  const modelOptions = [...new Set([p.model, ...p.models, ...models, savedModel].filter(Boolean))];
 
   async function saveAndTest() {
     const denied = await ensureAccess(draft!);
@@ -57,7 +59,15 @@ export function AiSettingsCard() {
       await ping(ep);
       setStatus({ kind: 'ok', text: `已保存，${ep.name} 连接正常（模型 ${ep.model}）。` });
     } catch (e) {
-      setStatus({ kind: 'err', text: `已保存，但测试没通过：${e instanceof Error ? e.message : String(e)}` });
+      const msg = e instanceof Error ? e.message : String(e);
+      // 常见原因是模型名过时：能列模型的服务商，顺便查一下模型还在不在
+      const list = p.noModelList ? [] : await listModels(ep).catch(() => [] as string[]);
+      if (list.length && !list.includes(ep.model)) {
+        setModels(list);
+        setManualModel(false);
+        return setStatus({ kind: 'err', text: `已保存，但 ${ep.name} 那边没有模型「${ep.model}」。已在高级设置里列出 ${list.length} 个可用模型，选一个再点保存。` });
+      }
+      setStatus({ kind: 'err', text: `已保存，但测试没通过：${msg}` });
     }
   }
 
@@ -103,7 +113,7 @@ export function AiSettingsCard() {
         </label>
       </div>
 
-      <details className="advanced" open={p.id === 'custom'}>
+      <details className="advanced" open={p.id === 'custom' || models.length > 0}>
         <summary>高级设置（一般不用改）</summary>
         <div className="grid ai-grid" style={{ marginTop: 'var(--space-3)' }}>
           {p.id === 'custom' && (
@@ -125,11 +135,15 @@ export function AiSettingsCard() {
               <input className="input" placeholder={p.model ? `不填就用 ${p.model}` : '模型名'} value={draft.model} onChange={(e) => set({ model: e.target.value })}
                 aria-label="模型名" />
             )}
-            <span className="field-msg">服务商更新了模型时，点「获取可用模型」拉最新列表，或者手动填。</span>
+            <span className="field-msg">{p.noModelList
+              ? `服务商更新了模型时，到 ${p.name} 控制台查模型名，选「手动填写」填进来。`
+              : '服务商更新了模型时，点「获取可用模型」拉最新列表，或者手动填。'}</span>
           </label>
-          <div className="field" style={{ alignContent: 'end' }}>
-            <div><button className="btn btn-secondary" onClick={fetchModels} disabled={!draft.apiKey.trim()}><RefreshCw {...iconProps} /> 获取可用模型</button></div>
-          </div>
+          {!p.noModelList && (
+            <div className="field" style={{ alignContent: 'end' }}>
+              <div><button className="btn btn-secondary" onClick={fetchModels} disabled={!draft.apiKey.trim()}><RefreshCw {...iconProps} /> 获取可用模型</button></div>
+            </div>
+          )}
         </div>
       </details>
 

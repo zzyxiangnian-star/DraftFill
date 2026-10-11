@@ -16,7 +16,11 @@ export const aiSettingsItem = storage.defineItem<AiSettings>('local:aiSettings',
   fallback: { provider: 'deepseek', apiKey: '', model: '', baseUrl: '' },
 });
 
-export interface Endpoint { baseUrl: string; model: string; apiKey: string; name: string }
+export interface Endpoint {
+  baseUrl: string; model: string; apiKey: string; name: string;
+  /** false：服务商不支持 response_format，只靠提示词要 JSON */
+  jsonMode?: boolean;
+}
 
 export function endpointOf(s: AiSettings): Endpoint | { error: string } {
   const p = providerById(s.provider);
@@ -26,5 +30,5 @@ export function endpointOf(s: AiSettings): Endpoint | { error: string } {
   const model = (s.model || p.model).trim();
   if (!baseUrl) return { error: '请填写接口地址' };
   if (!model) return { error: '请填写模型名' };
-  return { baseUrl, model, apiKey: s.apiKey.trim(), name: p.id === 'custom' ? '你填写的服务商' : p.name };
+  return { baseUrl, model, apiKey: s.apiKey.trim(), name: p.id === 'custom' ? '你填写的服务商' : p.name, jsonMode: !p.noJsonMode };
 }
