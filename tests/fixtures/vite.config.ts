@@ -20,6 +20,7 @@ export default defineConfig({
         element: resolve(root, 'element.html'),
         steps: resolve(root, 'steps.html'),
         'steps-frame': resolve(root, 'steps-frame.html'),
+        multi: resolve(root, 'multi.html'),
       },
     },
   },

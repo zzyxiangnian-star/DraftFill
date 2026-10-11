@@ -114,6 +114,8 @@ test('antd：组件内部状态同步更新（不只是改了输入框文字）'
   const { values, close } = await run('antd');
   await close();
   expect(values).toMatchObject({ name: '王小明', nation: '汉族', political: '共青团员', topDegree: '硕士', school: '北京大学', adjust: '是', gender: '男' });
+  // 级联选省市、专业选项带学科代码（计划书 V2）
+  expect(values).toMatchObject({ hukou: ['湖南省', '长沙市'], major: '计算机技术(085404)' });
   expect(values).toHaveProperty('graduate');
   expect(values).not.toHaveProperty('agree', true);
 });
@@ -125,6 +127,7 @@ test('element：组件内部状态同步更新', async () => {
     name: '王小明', gender: '男', birth: '2001-05', political: '共青团员', idType: '身份证', degree: '硕士研究生',
     degreeType: '硕士', start: '2024-09', end: '2027-06', rel: '父亲', fname: '王大明', avail: '2027-07-01',
   });
+  expect(values).toMatchObject({ native: ['湖南省', '长沙市'], school: '北京大学(Peking University)' });
   expect(values).not.toHaveProperty('self');
 });
 
@@ -133,7 +136,7 @@ test('antd：撤销后组件状态清空；清不掉的（无清空按钮的下�
   const r = await undo();
   await close();
   expect(r.failed.sort()).toEqual(['性别', '是否接受调剂', '最高学历'].sort());
-  for (const k of ['name', 'mobile', 'nation', 'political', 'school', 'major', 'graduate', 'birthday', 'desc']) {
+  for (const k of ['name', 'mobile', 'nation', 'political', 'school', 'major', 'graduate', 'birthday', 'desc', 'hukou']) {
     expect(r.values?.[k] ?? '').toBeFalsy();
   }
 });
@@ -143,7 +146,7 @@ test('element：撤销后组件状态清空；没有清空按钮的下拉如实�
   const r = await undo();
   await close();
   expect(r.failed).toEqual(['学历']);
-  for (const k of ['name', 'gender', 'birth', 'political', 'nation', 'start', 'end', 'rel', 'fname', 'avail']) {
+  for (const k of ['name', 'gender', 'birth', 'political', 'nation', 'start', 'end', 'rel', 'fname', 'avail', 'native', 'school']) {
     expect(r.values?.[k] ?? '').toBeFalsy();
   }
 });
@@ -233,6 +236,28 @@ test('多步表单：同源 iframe、shadow DOM 里的字段也能填；必填�
   expect(by2('职位名称')).toMatchObject({ status: 'ok' });
   expect(submitted).toBe(false);
   expect(await page.evaluate(() => (window as unknown as { __submitted?: boolean }).__submitted ?? false)).toBe(false);
+  await close();
+});
+
+test('多段经历：档案比页面多时点“添加”再填；弹出窗口的不填、不点保存', async () => {
+  const { report, submitted, close } = await run('multi');
+  const page = ctx.pages().find((p) => p.url().endsWith('/multi.html'))!;
+  expect(report.added).toEqual([{ name: '教育经历', count: 1 }, { name: '实习经历', count: 1 }]);
+  expect(report.addNotes?.[0]).toContain('家庭成员');
+  const vals = await page.$$eval('#edu input, #job input', (els) => els.map((e) => (e as HTMLInputElement).value));
+  expect(vals).toEqual(['北京大学', '计算机技术', '武汉大学', '软件工程', '示例科技', '后端开发实习生']);
+  expect(await page.isHidden('#dlg')).toBe(true);
+  expect(await page.evaluate(() => (window as unknown as { __saved?: boolean }).__saved ?? false)).toBe(false);
+  expect(submitted).toBe(false);
+
+  await sw.evaluate((rep) => chrome.storage.local.set({ lastReport: rep }), report);
+  const side = await ctx.newPage();
+  await side.setViewportSize({ width: 400, height: 900 });
+  await side.goto(`chrome-extension://${new URL(sw.url()).host}/sidepanel.html`);
+  await expect(side.getByText('自动添加了 1 段教育经历、1 段实习经历')).toBeVisible();
+  await expect(side.getByText(/家庭成员要在弹出的窗口里填写/)).toBeVisible();
+  if (process.env.SHOT_MULTI) await side.screenshot({ path: process.env.SHOT_MULTI, fullPage: true });
+  await side.close();
   await close();
 });
 

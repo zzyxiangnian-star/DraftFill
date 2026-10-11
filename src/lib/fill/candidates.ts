@@ -3,6 +3,7 @@ import { ALIASES } from './aliases';
 import { chooseNumber, chooseOption } from './choice';
 import type { Control } from './detect';
 import { datePartValue } from './dates';
+import { chooseFuzzy, fuzzyKindOf } from './fuzzy';
 import { parsePath, resolveValue } from './values';
 
 // 候选卡（计划书 V5）：插件没认出的字段，把档案里能填的值列出来，让用户自己点选。
@@ -63,7 +64,8 @@ function fits(x: Candidate, c: Pick<Control, 'kind' | 'options' | 'part'>): bool
     const v = datePartValue(x.value, c.part);
     return !!v && chooseNumber(v, c.options).ok;
   }
-  return chooseOption(x.value, c.options).ok;
+  const fk = fuzzyKindOf(x.path);
+  return (fk ? chooseFuzzy(x.value, c.options, fk) : chooseOption(x.value, c.options)).ok;
 }
 
 /** 搜索框：字段名或值里包含关键词 */

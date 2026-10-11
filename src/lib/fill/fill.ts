@@ -10,6 +10,9 @@ import { collectRoots } from './roots';
 import { datePartValue } from './dates';
 import { generalPath, hostOf, recall, signature, type FieldMemory } from './memory';
 import { ALIASES } from './aliases';
+import { chooseFuzzy, expandSchool, fuzzyKindOf } from './fuzzy';
+import { chooseRegion, chooseRepeat } from './region';
+import { addMissingEntries } from './addEntries';
 
 // Filler：按控件类型分派写入，写入后回读页面实际显示的值。只填不交。
 
@@ -42,14 +45,19 @@ export interface FillReport {
   job?: { company: string; position: string };
   /** 来自别的网站的内嵌页面数，浏览器不允许读取 */
   blockedFrames?: number;
+  /** 计划书 V1：自动点“添加”加出来的段落 */
+  added?: { name: string; count: number }[];
+  /** 经历没能加够的原因 */
+  addNotes?: string[];
 }
+
+type Chooser = (options: string[]) => ChoiceResult;
 
 const SKIP_KIND: Partial<Record<Control['kind'], string>> = {
   password: '密码框，按规则不填',
   captcha: '验证码，按规则不填',
   file: '附件需要你自己上传',
   checkbox: '复选框需要你自己勾选',
-  cascader: '级联选择（省市区等）第二版支持',
   readonly: '这一项要在弹出的面板里点选，请自己选一下',
 };
 
@@ -130,10 +138,10 @@ async function fillText(c: Control, value: string, sure: boolean, isDate: boolea
   return sameValue(el.value, text) ? ok(text, sure, note) : fail(el.value, `回读为“${el.value}”，和档案不一致`);
 }
 
-async function fillNativeSelect(c: Control, value: string, sure: boolean): Promise<Outcome> {
+async function fillNativeSelect(c: Control, value: string, sure: boolean, choose: Chooser = (o) => chooseOption(value, o)): Promise<Outcome> {
   const el = c.el as HTMLSelectElement;
   const opts = [...el.options].filter((o) => !PLACEHOLDER_OPTION.test(o.text.trim()) && o.value !== '');
-  const r = chooseOption(value, opts.map((o) => o.text));
+  const r = choose(opts.map((o) => o.text));
   if (!r.ok) return skip(r.reason);
   const opt = opts[r.index]!;
   setNativeValue(el, opt.value);
@@ -142,9 +150,9 @@ async function fillNativeSelect(c: Control, value: string, sure: boolean): Promi
   return now === opt.text.trim() ? ok(now, sure && r.sure) : fail(now, '选择后页面没有变化');
 }
 
-async function fillRadio(c: Control, value: string, sure: boolean): Promise<Outcome> {
+async function fillRadio(c: Control, value: string, sure: boolean, choose: Chooser = (o) => chooseOption(value, o)): Promise<Outcome> {
   const radios = c.radios ?? [];
-  const r = chooseOption(value, c.options);
+  const r = choose(c.options);
   if (!r.ok) return skip(r.reason);
   const radio = radios[r.index]!;
   safeClick(isVisible(radio) ? radio : (radio.closest('label') ?? radio));
@@ -262,7 +270,9 @@ const optionText = (o: HTMLElement) => (o.getAttribute('title') || textOf(o, 60)
 
 async function fillCustomSelect(
   c: Control, value: string, sure: boolean, ad: DropdownAdapter,
-  choose: (options: string[]) => ChoiceResult = (o) => chooseOption(value, o),
+  choose: Chooser = (o) => chooseOption(value, o),
+  /** 可搜索的下拉里输入的关键字（学校简称换成全称） */
+  query = value,
 ): Promise<Outcome> {
   const root = c.el;
   const trigger = ad.trigger(root);
@@ -293,7 +303,7 @@ async function fillCustomSelect(
   // 可搜索的下拉（如学校联想）：输入关键字再找
   const search = root.querySelector<HTMLInputElement>('input');
   if (!found && search && !search.readOnly) {
-    setNativeValue(search, value);
+    setNativeValue(search, query);
     await sleep(300);
     const p2 = ad.panel(root) ?? panel;
     const opts = await waitFor(() => { const o = ad.options(p2); return o.length ? o : null; }, 1500) ?? [];
@@ -315,6 +325,83 @@ async function fillCustomSelect(
   const now = await waitFor(() => (sameValue(ad.selected(root), want) ? ad.selected(root) : null), 800) ?? ad.selected(root);
   await closePanel();
   return sameValue(now, want) ? ok(now, sure && chosenSure) : fail(now, now ? `回读为“${now}”，和档案不一致` : '选择后页面没有变化');
+}
+
+// —— 级联选择（省市区，计划书 V2）——
+interface CascaderAdapter {
+  trigger(root: HTMLElement): HTMLElement;
+  panel(root: HTMLElement): HTMLElement | null;
+  menus(panel: HTMLElement): HTMLElement[];
+  items(menu: HTMLElement): HTMLElement[];
+  label(item: HTMLElement): string;
+  selected(root: HTMLElement): string;
+}
+
+const ANTD_CASCADER: CascaderAdapter = {
+  trigger: ANTD.trigger,
+  panel: (root) => visiblePanel(root.ownerDocument, '.ant-cascader-dropdown', 'ant-select-dropdown-hidden'),
+  menus: (panel) => [...panel.querySelectorAll<HTMLElement>('.ant-cascader-menu')],
+  items: (menu) => [...menu.querySelectorAll<HTMLElement>('.ant-cascader-menu-item')],
+  label: (item) => (item.getAttribute('title') || textOf(item.querySelector('.ant-cascader-menu-item-content') ?? item)).trim(),
+  selected: ANTD.selected,
+};
+
+const ELEMENT_CASCADER: CascaderAdapter = {
+  trigger: (root) => root.querySelector<HTMLElement>('.el-input__wrapper, .el-input') ?? root,
+  panel: (root) => visiblePanel(root.ownerDocument, '.el-cascader__dropdown', '__never__'),
+  menus: (panel) => [...panel.querySelectorAll<HTMLElement>('.el-cascader-menu')],
+  items: (menu) => [...menu.querySelectorAll<HTMLElement>('.el-cascader-node')],
+  label: (item) => textOf(item.querySelector('.el-cascader-node__label') ?? item).trim(),
+  selected: (root) => root.querySelector('input')?.value.trim() ?? '',
+};
+
+/** 一级一级点：湖南省 → 长沙市。点到最后一级时组件自己收起。 */
+async function fillCascader(c: Control, value: string, sure: boolean): Promise<Outcome> {
+  const ad = c.el.matches('.el-cascader') ? ELEMENT_CASCADER : ANTD_CASCADER;
+  const trigger = ad.trigger(c.el);
+  safeMouseDown(trigger);
+  safeClick(trigger);
+  const panel = await waitFor(() => ad.panel(c.el));
+  if (!panel) return fail('', '级联选择框没有打开');
+  const close = async () => { if (isVisible(panel)) pressEscape(c.el); await waitFor(() => !isVisible(panel), 600); };
+
+  let rest = clean(value);
+  let prev = '';
+  let exact = true;
+  const picked: string[] = [];
+  for (let level = 0; level < 5; level++) {
+    const menu = await waitFor(() => ad.menus(panel)[level] ?? null, 800);
+    if (!menu) break; // 上一级已经是最后一级
+    const items = ad.items(menu);
+    const labels = items.map(ad.label);
+    const r = chooseRegion(rest, labels);
+    let index: number | null = r?.index ?? null;
+    if (r) rest = rest.slice(r.consumed);
+    else {
+      // 档案里没写这一级（如“北京海淀”的第二级“北京市”），只有一个合理选项时才选
+      index = picked.length ? chooseRepeat(prev, labels) : null;
+      if (index === null) {
+        await close();
+        return skip(picked.length ? `档案里的“${value}”只对得上“${picked.join(' / ')}”，下一级请自己选` : `选项里没有“${value}”`);
+      }
+      exact = false;
+    }
+    const item = items[index!]!;
+    prev = labels[index!]!;
+    picked.push(prev);
+    safeClick(item);
+    await sleep(80);
+    if (!isVisible(panel)) break; // 点到最后一级，已选中并收起
+  }
+  await sleep(50);
+  if (isVisible(panel)) {
+    await close();
+    return skip(`档案里的“${value}”只写到“${picked.join(' / ')}”，页面要求选到下一级，请自己选`);
+  }
+  const now = ad.selected(c.el);
+  const ok_ = picked.every((p) => now.includes(p));
+  // 档案还有没用上的部分（写到了区县，页面只到市）也标黄
+  return ok_ ? ok(now, sure && exact && !rest) : fail(now, now ? `回读为“${now}”，和档案不一致` : '选择后页面没有变化');
 }
 
 async function fillPicker(c: Control, value: string, sure: boolean): Promise<Outcome> {
@@ -366,9 +453,9 @@ async function fillPhoenixDate(c: Control, value: string, sure: boolean): Promis
 
 const divRadioChecked = (item: HTMLElement) => !!item.querySelector('.phoenix-radio__dot--checked, .phoenix-radio__circle--checked');
 
-async function fillDivRadio(c: Control, value: string, sure: boolean): Promise<Outcome> {
+async function fillDivRadio(c: Control, value: string, sure: boolean, choose: Chooser = (o) => chooseOption(value, o)): Promise<Outcome> {
   const items = c.items ?? [];
-  const r = chooseOption(value, c.options);
+  const r = choose(c.options);
   if (!r.ok) return skip(r.reason);
   const item = items[r.index]!;
   const target = item.querySelector<HTMLElement>('.phoenix-radio__wrapper') ?? item;
@@ -400,17 +487,22 @@ function currentValue(c: Control): string {
 
 async function write(c: Control, path: string, value: string, sure: boolean): Promise<Outcome> {
   const isDate = DATE_PATH.test(path);
+  // 学校、专业：选项写法常和档案不同，用模糊匹配（计划书 V2）
+  const fk = fuzzyKindOf(path);
+  const choose: Chooser = fk ? (o) => chooseFuzzy(value, o, fk) : (o) => chooseOption(value, o);
+  const query = fk === 'school' ? expandSchool(value) : value;
   switch (c.kind) {
     case 'text': case 'textarea': case 'date': case 'month': return fillText(c, value, sure, isDate);
-    case 'select': return fillNativeSelect(c, value, sure);
-    case 'radio': return fillRadio(c, value, sure);
-    case 'antd-select': return fillCustomSelect(c, value, sure, ANTD);
-    case 'el-select': return fillCustomSelect(c, value, sure, ELEMENT);
+    case 'select': return fillNativeSelect(c, value, sure, choose);
+    case 'radio': return fillRadio(c, value, sure, choose);
+    case 'antd-select': return fillCustomSelect(c, value, sure, ANTD, choose, query);
+    case 'el-select': return fillCustomSelect(c, value, sure, ELEMENT, choose, query);
     case 'antd-picker': case 'el-picker': return fillPicker(c, value, sure);
-    case 'div-radio': return fillDivRadio(c, value, sure);
-    case 'phoenix-select': return isDate ? fillPhoenixDate(c, value, sure) : fillCustomSelect(c, value, sure, PHOENIX);
+    case 'cascader': return fillCascader(c, value, sure);
+    case 'div-radio': return fillDivRadio(c, value, sure, choose);
+    case 'phoenix-select': return isDate ? fillPhoenixDate(c, value, sure) : fillCustomSelect(c, value, sure, PHOENIX, choose, query);
     case 'moka-select': {
-      if (!c.part) return fillCustomSelect(c, value, sure, MOKA);
+      if (!c.part) return fillCustomSelect(c, value, sure, MOKA, choose, query);
       const v = datePartValue(value, c.part);
       if (!v) return skip(`档案里的日期“${value}”格式不对`);
       return fillCustomSelect(c, v, sure, MOKA, (o) => chooseNumber(v, o));
@@ -487,7 +579,8 @@ function originalValue(c: Control): string {
   return currentValue(c);
 }
 
-export async function runFill(doc: Document, profile: Profile, memory?: FieldMemory | null): Promise<FillRun> {
+export async function runFill(doc: Document, profile: Profile, memory?: FieldMemory | null, opts: { addEntries?: boolean } = {}): Promise<FillRun> {
+  const adding = opts.addEntries ? await addMissingEntries(doc, profile, memory) : null;
   const entries: FillEntry[] = [];
   for (const f of planFill(doc, profile, memory)) {
     const index = entries.length;
@@ -519,6 +612,8 @@ export async function runFill(doc: Document, profile: Profile, memory?: FieldMem
   };
   const { blockedFrames } = collectRoots(doc);
   if (blockedFrames) report.blockedFrames = blockedFrames;
+  if (adding?.added.length) report.added = adding.added;
+  if (adding?.notes.length) report.addNotes = adding.notes;
   return { report, entries };
 }
 
@@ -602,6 +697,10 @@ async function restore(e: FillEntry): Promise<boolean> {
       return (await clickClear(c.el, '.ant-picker-clear')) && !c.el.querySelector('input')?.value;
     case 'el-picker':
       return (await clickClear(c.el, '.el-input__clear, .el-range__close-icon, .clear-icon')) && !c.el.querySelector('input')?.value;
+    case 'cascader':
+      return c.el.matches('.el-cascader')
+        ? (await clickClear(c.el, '.el-input__clear, .el-cascader__clear, .icon-circle-close')) && !ELEMENT_CASCADER.selected(c.el)
+        : (await clickClear(c.el, '.ant-select-clear')) && !ANTD_CASCADER.selected(c.el);
     case 'phoenix-select':
       return (await clickClear(c.el, '.phoenix-select__clearIcon--show, .phoenix-select__clearIcon')) && !PHOENIX.selected(c.el);
     default:

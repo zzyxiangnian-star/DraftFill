@@ -16,7 +16,8 @@ describe('候选卡', () => {
     document.body.innerHTML = PAGE;
     const p = sampleProfile();
     const { entries } = await runFill(document, p);
-    const [name, dorm, pwd] = ['n', 'dorm', 'pwd'].map((n) => document.querySelector(`[name=${n}]`)!);
+    const q = (n: string) => document.querySelector(`[name=${n}]`)!;
+    const [name, dorm, pwd] = [q('n'), q('dorm'), q('pwd')];
     expect(cardEntry(entries, name, p)).toBeNull(); // 已经填了
     expect(cardEntry(entries, pwd, p)).toBeNull(); // 密码框不填
     const hit = cardEntry(entries, dorm, p)!;

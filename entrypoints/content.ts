@@ -57,7 +57,7 @@ async function fill(): Promise<FillResult> {
   if (!profile) return { ok: false, reason: '还没有档案，请先在设置页创建' };
   window.__wangshenWatch?.();
   window.__wangshenCard?.();
-  const run = await runFill(document, profile, await fieldMemoryItem.getValue());
+  const run = await runFill(document, profile, await fieldMemoryItem.getValue(), { addEntries: true });
   window.__wangshenEntries = run.entries;
   applyMarks(document, run.entries);
   await pageChangeItem.setValue(null);

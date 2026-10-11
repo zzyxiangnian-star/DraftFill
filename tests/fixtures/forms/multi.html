@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>多段经历测试页（点“添加”加出新段落）</title>
+<style>
+  body { font: 14px/1.6 sans-serif; max-width: 760px; margin: 24px auto; }
+  .row { margin: 6px 0; } .row > label { display: inline-block; width: 100px; text-align: right; }
+  .block { border: 1px dashed #ccc; padding: 6px 10px; margin: 8px 0; }
+  .bar { display: flex; align-items: center; gap: 12px; }
+  .mask { position: fixed; inset: 0; background: rgba(0,0,0,.3); }
+  .dlg { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #fff; padding: 16px; }
+</style>
+</head>
+<body>
+<!-- 自制测试页：模拟“添加一段经历”的三种做法。data-expect 是正确答案（新加出的段落没有标注）。 -->
+<h1>示例公司 2027 届校园招聘</h1>
+<form onsubmit="window.__submitted = true; return false;">
+  <h3>教育经历</h3>
+  <div id="edu">
+    <div class="block">
+      <div class="row" data-expect="education[0].school"><label>学校名称</label><input></div>
+      <div class="row" data-expect="education[0].major"><label>专业</label><input></div>
+    </div>
+  </div>
+  <!-- 北森的写法：按钮自己带分区名 -->
+  <div class="isea_addButton" onclick="addEdu()"><span>添加教育经历</span></div>
+
+  <!-- Moka 的写法：标题栏里只写“添加” -->
+  <div class="bar"><h3>实习经历</h3><button type="button" onclick="addJob()">添加</button></div>
+  <div id="job"></div>
+
+  <!-- 点添加弹出窗口：插件不在窗口里填，关掉窗口交给用户 -->
+  <h3>家庭成员</h3>
+  <div class="block">
+    <div class="row" data-expect="family[0].relation"><label>称谓</label><input></div>
+    <div class="row" data-expect="family[0].name"><label>姓名</label><input></div>
+  </div>
+  <a href="javascript:void 0" onclick="openDlg()">+ 新增</a>
+  <div id="dlg" hidden>
+    <div class="mask"></div>
+    <div class="dlg" role="dialog">
+      <div class="row"><label>称谓</label><input></div>
+      <div class="row"><label>姓名</label><input></div>
+      <button type="button" onclick="window.__saved = true">保存</button>
+    </div>
+  </div>
+  <p><button type="submit">提交</button></p>
+</form>
+<script>
+  function addEdu() {
+    const b = document.querySelector('#edu .block').cloneNode(true);
+    b.querySelectorAll('input').forEach((i) => { i.value = ''; });
+    b.querySelectorAll('[data-expect]').forEach((d) => d.removeAttribute('data-expect'));
+    document.getElementById('edu').append(b);
+  }
+  function addJob() {
+    const b = document.createElement('div');
+    b.className = 'block';
+    b.innerHTML = '<div class="row"><label>公司名称</label><input></div><div class="row"><label>职位名称</label><input></div>';
+    document.getElementById('job').append(b);
+  }
+  function openDlg() { document.getElementById('dlg').hidden = false; }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.getElementById('dlg').hidden = true; });
+</script>
+</body>
+</html>

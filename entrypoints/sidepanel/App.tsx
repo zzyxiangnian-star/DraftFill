@@ -91,6 +91,10 @@ function Result({ report }: { report: FillReport }) {
           <p className="small muted" style={{ margin: 0 }}>已经有内容的字段不会被覆盖。</p>
         </section>
       )}
+      {!!report.added?.length && !undone && (
+        <p className="notice small">自动添加了 {report.added.map((a) => `${a.count} 段${a.name}`).join('、')}，并按档案填好。撤销不会删掉这些段落，不需要的话请自己删除。</p>
+      )}
+      {!undone && report.addNotes?.map((n) => <p key={n} className="notice notice-warn small">{n}</p>)}
       {!!report.blockedFrames && !undone && (
         <p className="notice notice-warn small">页面里有 {report.blockedFrames} 个嵌入的页面来自别的网站，浏览器不允许插件读取，里面的内容请自己填写。</p>
       )}
