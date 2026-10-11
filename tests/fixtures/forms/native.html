@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>原生表单测试页（仿老式网申系统）</title>
+<style>
+  body { font: 14px/1.6 sans-serif; max-width: 900px; margin: 24px auto; }
+  table { border-collapse: collapse; width: 100%; } th { text-align: right; width: 120px; font-weight: normal; padding: 6px; } td { padding: 6px; }
+  .row { margin: 8px 0; } .row > span { display: inline-block; width: 120px; text-align: right; }
+</style>
+</head>
+<body>
+<!-- 每个字段外层的 data-expect 是正确答案：档案路径，none 表示不应该填写。 -->
+<h1>示例集团 2027 届校园招聘</h1>
+<form id="apply" onsubmit="window.__submitted = true; return false;">
+  <h3>个人基本信息</h3>
+  <div class="row" data-expect="basic.name"><label for="xm">姓名<i>*</i>：</label><input id="xm" name="xm" required></div>
+  <div class="row" data-expect="none"><label for="ywm">英文姓名：</label><input id="ywm"></div>
+  <div class="row" data-expect="basic.gender"><span>性别：</span>
+    <label><input type="radio" name="sex" value="1">男</label><label><input type="radio" name="sex" value="2">女</label></div>
+  <div class="row" data-expect="basic.birthDate"><label for="csrq">出生日期：</label><input type="date" id="csrq"></div>
+  <div class="row" data-expect="basic.ethnicity"><label for="mz">民族：</label>
+    <select id="mz"><option value="">--请选择--</option><option value="01">汉</option><option value="02">蒙古</option><option value="03">回</option></select></div>
+  <div class="row" data-expect="basic.politicalStatus"><label for="zzmm">政治面貌：</label>
+    <select id="zzmm"><option value="">请选择</option><option>中共党员</option><option>中共预备党员</option><option>中国共产主义青年团团员</option><option>群众</option></select></div>
+  <table>
+    <tr data-expect="basic.nativePlace"><th>籍贯</th><td><input name="jg"></td></tr>
+    <tr><th>户口所在地</th><td data-expect="basic.hukou"><input name="hkszd"></td><th>户口性质</th><td data-expect="none"><select name="hkxz"><option>城镇</option><option>农村</option></select></td></tr>
+  </table>
+  <div class="row" data-expect="basic.phone"><input name="mobile" placeholder="请输入手机号码"></div>
+  <div class="row" data-expect="basic.email"><input type="email" aria-label="电子邮箱"></div>
+  <div class="row" data-expect="basic.idNumber"><label>身份证号码 <input name="sfz"></label></div>
+  <div class="row" data-expect="none"><label for="yzm">验证码：</label><input id="yzm"></div>
+  <div class="row" data-expect="none"><label for="pwd">设置密码：</label><input id="pwd" type="password"></div>
+
+  <h3>求职意向</h3>
+  <div class="row" data-expect="intention.positions"><label for="yp">应聘岗位：</label><input id="yp"></div>
+  <div class="row" data-expect="intention.cities"><label for="gzdd">期望工作城市：</label><input id="gzdd"></div>
+  <div class="row" data-expect="intention.acceptAdjust"><span>是否服从调剂：</span>
+    <label><input type="radio" name="tj" value="Y">服从</label><label><input type="radio" name="tj" value="N">不服从</label></div>
+  <div class="row" data-expect="intention.infoSource"><label for="ly">信息来源：</label>
+    <select id="ly"><option value="">请选择</option><option>校园宣讲会</option><option>公司官网</option><option>朋友推荐</option></select></div>
+  <div class="row" data-expect="intention.referralCode"><label for="nt">内推码（选填）：</label><input id="nt"></div>
+
+  <h3>教育经历</h3>
+  <h4>教育经历（一）</h4>
+  <div class="row" data-expect="education[0].school"><label for="xx1">学校名称：</label><input id="xx1"></div>
+  <div class="row" data-expect="education[0].degree"><label for="xl1">学历：</label>
+    <select id="xl1"><option value="">请选择</option><option>大专</option><option>大学本科</option><option>硕士研究生</option><option>博士研究生</option></select></div>
+  <div class="row" data-expect="education[0].major"><label for="zy1">专业：</label><input id="zy1"></div>
+  <div class="row" data-expect="education[0].start"><label for="rx1">入学时间：</label><input id="rx1" placeholder="YYYY.MM"></div>
+  <div class="row" data-expect="education[0].end"><label for="by1">毕业时间：</label><input id="by1" placeholder="YYYY.MM"></div>
+  <div class="row" data-expect="education[0].gpa"><label for="gpa1">GPA：</label><input id="gpa1"></div>
+  <div class="row" data-expect="education[0].rank"><label for="pm1">专业排名：</label><input id="pm1"></div>
+  <h4>教育经历（二）</h4>
+  <div class="row" data-expect="education[1].school"><label for="xx2">学校名称：</label><input id="xx2"></div>
+  <div class="row" data-expect="education[1].degree"><label for="xl2">学历：</label>
+    <select id="xl2"><option value="">请选择</option><option>大专</option><option>大学本科</option><option>硕士研究生</option><option>博士研究生</option></select></div>
+  <div class="row" data-expect="education[1].major"><label for="zy2">专业：</label><input id="zy2"></div>
+  <div class="row" data-expect="education[1].start"><label for="rx2">入学时间：</label><input id="rx2" placeholder="YYYY.MM"></div>
+  <div class="row" data-expect="education[1].end"><label for="by2">毕业时间：</label><input id="by2" placeholder="YYYY.MM"></div>
+
+  <h3>实习经历</h3>
+  <div class="row" data-expect="internships[0].company"><label for="gs">公司名称：</label><input id="gs"></div>
+  <div class="row" data-expect="internships[0].title"><label for="zw">职位：</label><input id="zw"></div>
+  <div class="row" data-expect="internships[0].start"><label for="ks">开始时间：</label><input id="ks" type="month"></div>
+  <div class="row" data-expect="internships[0].end"><label for="js">结束时间：</label><input id="js" type="month"></div>
+  <div class="row" data-expect="internships[0].description"><label for="nr">工作内容：</label><textarea id="nr" maxlength="500"></textarea></div>
+
+  <h3>家庭成员</h3>
+  <table>
+    <tr><th>关系</th><td data-expect="family[0].relation"><select name="gx"><option value="">请选择</option><option>父</option><option>母</option></select></td>
+        <th>姓名</th><td data-expect="family[0].name"><input name="jtxm"></td></tr>
+    <tr><th>工作单位</th><td data-expect="family[0].employer"><input name="dw"></td>
+        <th>联系电话</th><td data-expect="family[0].phone"><input name="jtdh"></td></tr>
+  </table>
+
+  <h3>紧急联系人</h3>
+  <div class="row" data-expect="emergencyContact.name"><label for="jjxm">姓名：</label><input id="jjxm"></div>
+  <div class="row" data-expect="emergencyContact.phone"><label for="jjdh">联系电话：</label><input id="jjdh"></div>
+
+  <h3>其他</h3>
+  <div class="row" data-expect="none"><label for="tjr">推荐人姓名：</label><input id="tjr"></div>
+  <div class="row" data-expect="none"><label for="zwpj">自我评价：</label><textarea id="zwpj"></textarea></div>
+  <div class="row" data-expect="none"><label for="fj">简历附件：</label><input id="fj" type="file"></div>
+  <div class="row" data-expect="none"><label><input type="checkbox" id="ty">我已阅读并同意《个人信息保护声明》</label></div>
+  <button type="submit">提交申请</button>
+</form>
+</body>
+</html>

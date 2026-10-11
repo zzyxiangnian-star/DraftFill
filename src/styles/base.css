@@ -112,3 +112,15 @@ input[type="month"].input, input[type="date"].input { font-variant-numeric: tabu
 .btn-confirm-danger { border-color: var(--danger); color: var(--danger); }
 .btn-confirm-danger:hover { background: var(--danger-soft); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 填写结果 */
+.counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.count { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: var(--radius-pill); font-size: var(--fs-label); font-weight: 500;
+         font-variant-numeric: tabular-nums; }
+.count-ok { background: var(--success-soft); color: var(--success); }
+.count-warn { background: var(--warning-soft); color: var(--warning); }
+.count-err { background: var(--danger-soft); color: var(--danger); }
+.count-skip { background: var(--surface-strong); color: var(--text-muted); }
+.report-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.report-list .status { animation: enter var(--dur) var(--ease-enter) both; }
+@media (prefers-reduced-motion: reduce) { .report-list .status { animation-name: fade; } }

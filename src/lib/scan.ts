@@ -1,7 +1,19 @@
-import type { FieldKind, ScanSummary } from './messages';
 
-// 阶段 0 的扫描只统计控件，验证 popup → background → content 链路是通的。
-// 真正的字段识别（FieldDetector）在阶段 2 实现。
+// 快速统计页面上的表单控件（阶段 0 用来打通链路）。字段识别见 fill/detect.ts。
+
+export type FieldKind = 'text' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date';
+
+export interface ScanSummary {
+  url: string;
+  title: string;
+  /** 可填写的控件数（不含跳过的敏感控件） */
+  fillable: number;
+  byKind: Record<FieldKind, number>;
+  /** 按第 2 节边界跳过的控件：密码、验证码、文件上传 */
+  skipped: number;
+  /** 当前页里的 iframe 数量 */
+  frames: number;
+}
 
 const SENSITIVE_NAME = /captcha|verify|验证码|校验码|password|passwd|pwd/i;
 

@@ -14,7 +14,9 @@
     "zip:edge": "wxt zip -b edge",
     "compile": "tsc --noEmit",
     "test": "vitest run",
-    "postinstall": "wxt prepare"
+    "postinstall": "wxt prepare",
+    "fixtures": "vite build --config tests/fixtures/vite.config.ts && rolldown tests/e2e/probe.ts --format iife --file tests/fixtures/dist/probe.js",
+    "test:e2e": "npm run build && npm run fixtures && playwright test"
   },
   "dependencies": {
     "lucide-react": "^1.55.0",
@@ -22,12 +24,18 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@vitejs/plugin-vue": "^6.0.10",
     "@wxt-dev/module-react": "^1.2.2",
+    "antd": "^6.6.5",
+    "element-plus": "^2.14.7",
     "happy-dom": "^20.14.6",
     "typescript": "^5.9.3",
     "vitest": "^5.0.3",
+    "vue": "^3.5.43",
     "wxt": "^0.21.4"
   }
 }

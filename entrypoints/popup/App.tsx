@@ -1,26 +1,27 @@
-import { ArrowRight, PanelRight, ScanSearch, Settings, UserRound } from 'lucide-react';
+import { ArrowRight, PanelRight, Settings, Sparkles, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { Logo } from '@/src/components/Logo';
+import { Counts, ReportList } from '@/src/components/Report';
 import { StatusRow } from '@/src/components/StatusRow';
 import { iconProps } from '@/src/components/icon';
-import type { FieldKind, Request, ScanResult } from '@/src/lib/messages';
+import type { FillResult, Request } from '@/src/lib/messages';
 import { activeProfile, setActive } from '@/src/lib/profile/store';
 import { useProfileStore } from '@/src/lib/profile/useProfileStore';
 
-const KIND_LABEL: Record<FieldKind, string> = {
-  text: '文本框', textarea: '多行文本', select: '下拉框', radio: '单选', checkbox: '复选', date: '日期',
-};
+const PREVIEW = 5;
 
 export function App() {
-  const [result, setResult] = useState<ScanResult | null>(null);
+  const [result, setResult] = useState<FillResult | null>(null);
   const [busy, setBusy] = useState(false);
   const { store, commit } = useProfileStore();
   const active = store && activeProfile(store);
 
-  async function scan() {
+  async function fill() {
     setBusy(true);
     try {
-      setResult(await browser.runtime.sendMessage<Request, ScanResult>({ type: 'scan-active-tab' }));
+      setResult(await browser.runtime.sendMessage<Request, FillResult>({ type: 'fill-active-tab' }));
+    } catch (e) {
+      setResult({ ok: false, reason: String(e) });
     } finally {
       setBusy(false);
     }
@@ -32,6 +33,8 @@ export function App() {
     window.close();
   }
 
+  const openOptions = () => browser.runtime.openOptionsPage();
+
   return (
     <div className="popup">
       <header className="popup-head">
@@ -40,68 +43,70 @@ export function App() {
         <button className="btn btn-icon" title="打开侧边栏" aria-label="打开侧边栏" onClick={openSidePanel}>
           <PanelRight {...iconProps} />
         </button>
-        <button className="btn btn-icon" title="档案与设置" aria-label="档案与设置" onClick={() => browser.runtime.openOptionsPage()}>
+        <button className="btn btn-icon" title="档案与设置" aria-label="档案与设置" onClick={openOptions}>
           <Settings {...iconProps} />
         </button>
       </header>
 
       <section className="card enter" aria-live="polite">
-        {!result && (
-          <>
+        {result?.ok ? (
+          <div className="stack">
+            <div className="label">已用「{result.report.profileTitle}」填写</div>
+            <h2 className="clamp" title={result.report.title}>{result.report.title || '当前页面'}</h2>
+            <Counts items={result.report.items} />
+          </div>
+        ) : result ? (
+          <ul className="report-list"><StatusRow status="err" name="没有填写" value={result.reason} tag="失败" /></ul>
+        ) : !store ? null : !active ? (
+          <div className="stack">
+            <div className="label">开始之前</div>
+            <h2>先建一份档案</h2>
+            <p className="small muted">填一次个人信息，之后每家网申都从这里取。</p>
+          </div>
+        ) : (
+          <div className="stack">
             <div className="label">当前页面</div>
-            <h2>还没有识别</h2>
-            <p className="small muted">点下面的按钮，插件才会读取这一页的表单。</p>
-          </>
-        )}
-        {result?.ok === false && (
-          <ul className="stack" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            <StatusRow status="err" name="无法识别" value={result.reason} tag="失败" />
-          </ul>
-        )}
-        {result?.ok && (
-          <>
-            <div className="label">识别到表单控件</div>
-            <h2 title={result.summary.title}>{result.summary.title || '未命名页面'}</h2>
-            <p className="small muted">
-              可填写 {result.summary.fillable} 个，按规则跳过 {result.summary.skipped} 个（密码、验证码、文件上传）
-              {result.summary.frames > 0 && `，另有 ${result.summary.frames} 个内嵌框架暂未扫描`}
-            </p>
-            <div className="kinds">
-              {(Object.keys(KIND_LABEL) as FieldKind[])
-                .filter((k) => result.summary.byKind[k] > 0)
-                .map((k) => <span key={k} className="pill">{KIND_LABEL[k]} {result.summary.byKind[k]}</span>)}
-            </div>
-          </>
+            <h2>准备好了</h2>
+            <p className="small muted">会用「{active.title}」填写这一页。插件不会提交，填完请你检查后自己提交。</p>
+          </div>
         )}
       </section>
 
-      <button className="btn btn-primary btn-block" onClick={scan} disabled={busy}>
-        <ScanSearch {...iconProps} />
-        {busy ? '正在识别…' : result ? '重新识别' : '识别当前页表单'}
-        <ArrowRight {...iconProps} className="arrow" />
-      </button>
+      {result?.ok && (
+        <div className="stack">
+          <ReportList report={result.report} limit={PREVIEW} />
+          {result.report.items.length > PREVIEW && (
+            <button className="btn btn-text small" onClick={openSidePanel}>在侧边栏查看全部 {result.report.items.length} 项</button>
+          )}
+        </div>
+      )}
 
-      <div className="foot">
-        {!store ? <span /> : !active ? (
-          <>
-            <span className="profile small muted"><UserRound {...iconProps} /> 还没有档案</span>
-            <button className="btn btn-text small" onClick={() => browser.runtime.openOptionsPage()}>创建档案</button>
-          </>
-        ) : (
-          <>
-            <label className="profile small">
-              <UserRound {...iconProps} aria-hidden />
-              <span className="sr-only">填写时使用的档案</span>
-              {store.profiles.length > 1 ? (
-                <select className="profile-select" value={active.id} onChange={(e) => commit(setActive(store, e.target.value), true)}>
-                  {store.profiles.map((p) => <option key={p.id} value={p.id}>{p.title || '未命名档案'}</option>)}
-                </select>
-              ) : <span>{active.title}</span>}
-            </label>
-            <button className="btn btn-text small" onClick={() => browser.runtime.openOptionsPage()}>编辑档案</button>
-          </>
-        )}
-      </div>
+      {store && !active ? (
+        <button className="btn btn-primary btn-block" onClick={openOptions}>
+          <UserRound {...iconProps} /> 创建档案 <ArrowRight {...iconProps} className="arrow" />
+        </button>
+      ) : (
+        <button className="btn btn-primary btn-block" onClick={fill} disabled={busy || !active}>
+          <Sparkles {...iconProps} />
+          {busy ? '正在填写…' : result?.ok ? '再填一次' : '一键填充'}
+          <ArrowRight {...iconProps} className="arrow" />
+        </button>
+      )}
+
+      {active && store && (
+        <div className="foot">
+          <label className="profile small">
+            <UserRound {...iconProps} aria-hidden />
+            <span className="sr-only">填写时使用的档案</span>
+            {store.profiles.length > 1 ? (
+              <select className="profile-select" value={active.id} onChange={(e) => commit(setActive(store, e.target.value), true)}>
+                {store.profiles.map((p) => <option key={p.id} value={p.id}>{p.title || '未命名档案'}</option>)}
+              </select>
+            ) : <span>{active.title}</span>}
+          </label>
+          <button className="btn btn-text small" onClick={openOptions}>编辑档案</button>
+        </div>
+      )}
     </div>
   );
 }

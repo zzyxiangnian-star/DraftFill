@@ -1,0 +1,83 @@
+import type { Profile } from '../profile/schema';
+import { ALIASES, type Alias } from './aliases';
+import type { Control } from './detect';
+import { clean } from './text';
+
+// Matcher：给每个字段打分，选出最可能的档案路径。
+// 优先级（计划书第 5 节）：站点规则 → 内置别名 → 自定义字段 → 学习记录 → LLM。阶段 2 只有内置别名和自定义字段。
+
+export type Confidence = 'high' | 'low';
+
+export interface Match {
+  /** 档案路径，多条经历用 [] 占位，如 education[].school；自定义字段为 custom:<id> */
+  path: string;
+  score: number;
+  confidence: Confidence;
+  /** 打分第二高的候选，便于解释“为什么没把握” */
+  runnerUp?: string;
+}
+
+export type MatchResult = Match | { path: null; reason: string };
+
+const EXACT = 1;
+const CONTAINS = 0.75;
+const PLACEHOLDER = 0.6;
+const KEY = 0.55;
+const HIGH = 0.75;
+const LOW = 0.55;
+const MARGIN = 0.15;
+
+function scoreText(text: string, aliases: string[], base: number): number {
+  let best = 0;
+  for (const a of aliases) {
+    const n = clean(a);
+    if (!n || !text) continue;
+    if (text === n) best = Math.max(best, base === CONTAINS ? EXACT : base + 0.1);
+    else if (n.length >= 2 && text.includes(n)) best = Math.max(best, base + Math.min(n.length, 8) * 0.01);
+  }
+  return best;
+}
+
+function scoreAlias(c: Control, a: Alias): number {
+  const label = clean(c.label);
+  const ph = clean(c.placeholder);
+  const all = `${label}|${ph}`;
+  if (a.exclude?.some((x) => all.includes(clean(x)))) return 0;
+
+  const known = c.section !== null;
+  if (known && !a.home.includes(c.section!)) return 0;
+  // 泛称只在字段的主分区里算数
+  const aliases = known && c.section === a.home[0] ? [...a.strong, ...(a.ctx ?? [])] : a.strong;
+
+  let s = Math.max(scoreText(label, aliases, CONTAINS), scoreText(ph, aliases, PLACEHOLDER));
+  if (a.keys && c.keys.length) {
+    const key = c.keys.join(' ');
+    if (a.keys.some((k) => k.join(' ') === key)) s = Math.max(s, KEY);
+  }
+  if (s > 0 && known) s += 0.05;
+  return s;
+}
+
+export function matchControl(c: Control, profile: Profile): MatchResult {
+  const label = clean(c.label);
+  const ph = clean(c.placeholder);
+
+  // 自定义字段：名称完全一致才算
+  const custom = profile.custom.find((f) => f.label && (clean(f.label) === label || clean(f.label) === ph));
+  if (custom) return { path: `custom:${custom.id}`, score: EXACT, confidence: 'high' };
+
+  const scored = ALIASES.map((a) => ({ path: a.path, score: scoreAlias(c, a) }))
+    .filter((x) => x.score > 0)
+    .sort((x, y) => y.score - x.score);
+  const [best, second] = scored;
+  if (!best || best.score < LOW) {
+    return { path: null, reason: c.label || c.placeholder ? '没认出这个字段' : '这个字段没有标签，无法判断' };
+  }
+  const close = second && best.score - second.score < MARGIN;
+  return {
+    path: best.path,
+    score: best.score,
+    confidence: best.score >= HIGH && !close ? 'high' : 'low',
+    runnerUp: close ? second.path : undefined,
+  };
+}
