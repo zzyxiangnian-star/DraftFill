@@ -11,7 +11,7 @@ import { datePartValue } from './dates';
 import { generalPath, hostOf, recall, signature, type FieldMemory } from './memory';
 import { ALIASES } from './aliases';
 import { chooseFuzzy, expandSchool, fuzzyKindOf } from './fuzzy';
-import { chooseRegion, chooseRepeat } from './region';
+import { chooseRegion, chooseRepeat, shortRegion } from './region';
 import { addMissingEntries } from './addEntries';
 
 // Filler：按控件类型分派写入，写入后回读页面实际显示的值。只填不交。
@@ -179,7 +179,9 @@ function visiblePanel(doc: Document, selector: string, hiddenClass: string): HTM
 /** 通过 aria-controls（或 AntD 的 “id_list” 约定）找到这个下拉框自己的弹层，避免拿到别的下拉框还没关完的弹层 */
 function ownPanel(root: HTMLElement, popper: string): HTMLElement | null | undefined {
   const input = root.querySelector('input');
-  const ids = [input?.getAttribute('aria-controls'), input?.id ? `${input.id}_list` : null].filter(Boolean) as string[];
+  // Ant Design 3 把 aria-controls 放在 role=combobox 的 div 上
+  const combo = root.querySelector('[role=combobox][aria-controls]');
+  const ids = [input?.getAttribute('aria-controls'), combo?.getAttribute('aria-controls'), input?.id ? `${input.id}_list` : null].filter(Boolean) as string[];
   for (const id of ids) {
     const p = root.ownerDocument.getElementById(id)?.closest<HTMLElement>(popper);
     if (p) return isVisible(p) && !p.className.includes('-hidden') ? p : null;
@@ -193,20 +195,37 @@ function pressEscape(root: HTMLElement) {
   input?.blur();
 }
 
-const ANTD: DropdownAdapter = {
-  trigger: (root) => root.querySelector<HTMLElement>('.ant-select-selector, .ant-select-content') ?? root,
-  panel: (root) => {
-    const own = ownPanel(root, '.ant-select-dropdown');
-    return own !== undefined ? own : visiblePanel(root.ownerDocument, '.ant-select-dropdown', 'ant-select-dropdown-hidden');
-  },
-  options: (panel) => [...panel.querySelectorAll<HTMLElement>('.ant-select-item-option')],
-  scroller: (panel) => panel.querySelector<HTMLElement>('.rc-virtual-list-holder, .ant-select-dropdown-list-holder'),
-  selected: (root) => {
-    const item = root.querySelector('.ant-select-selection-item, .ant-select-content-has-value');
-    return (item?.getAttribute('title') || textOf(item)).trim();
-  },
-  close: pressEscape,
-};
+/** Ant Design 的类名前缀：默认 ant，飞书招聘改成了 atsx */
+export function antPrefix(root: Element): string {
+  const cls = [...root.classList].find((c) => /^[a-z][\w]*-select$/.test(c));
+  return cls ? cls.slice(0, -'-select'.length) : 'ant';
+}
+
+/**
+ * Ant Design 下拉。新版（4/5）用 select-selector、select-item-option；
+ * 3.x（Wecruit、飞书招聘的快照）用 select-selection、select-dropdown-menu-item，选中值在 select-selection-selected-value。
+ */
+function antdAdapter(p: string): DropdownAdapter {
+  return {
+    trigger: (root) => root.querySelector<HTMLElement>(`.${p}-select-selector, .${p}-select-content, .${p}-select-selection`) ?? root,
+    panel: (root) => {
+      const own = ownPanel(root, `.${p}-select-dropdown`);
+      return own !== undefined ? own : visiblePanel(root.ownerDocument, `.${p}-select-dropdown`, `${p}-select-dropdown-hidden`);
+    },
+    options: (panel) => [...panel.querySelectorAll<HTMLElement>(
+      `.${p}-select-item-option, .${p}-select-dropdown-menu-item:not(.${p}-select-dropdown-menu-item-disabled)`)],
+    scroller: (panel) => panel.querySelector<HTMLElement>(`.rc-virtual-list-holder, .${p}-select-dropdown-list-holder, .${p}-select-dropdown-menu`),
+    selected: (root) => {
+      const item = root.querySelector(`.${p}-select-selection-item, .${p}-select-content-has-value, .${p}-select-selection-selected-value`);
+      if (item) return (item.getAttribute('title') || textOf(item)).trim();
+      // 3.x 的输入联想（飞书的学校名称）：值就在输入框里
+      return root.matches(`.${p}-select-combobox`) ? (root.querySelector('input')?.value ?? '').trim() : '';
+    },
+    close: pressEscape,
+  };
+}
+const ANTD = antdAdapter('ant');
+const antdFor = (root: Element) => { const p = antPrefix(root); return p === 'ant' ? ANTD : antdAdapter(p); };
 
 const ELEMENT: DropdownAdapter = {
   trigger: (root) => root.querySelector<HTMLElement>('.el-select__wrapper, .el-input__wrapper, .el-input') ?? root,
@@ -475,7 +494,7 @@ function currentValue(c: Control): string {
       return !opt || !opt.value || PLACEHOLDER_OPTION.test(opt.text.trim()) ? '' : opt.text;
     }
     case 'radio': return c.radios?.some((r) => r.checked) ? 'checked' : '';
-    case 'antd-select': return ANTD.selected(c.el);
+    case 'antd-select': return antdFor(c.el).selected(c.el);
     case 'el-select': return ELEMENT.selected(c.el);
     case 'antd-picker': case 'el-picker': return c.el.querySelector('input')?.value ?? '';
     case 'moka-select': return MOKA.selected(c.el);
@@ -485,17 +504,48 @@ function currentValue(c: Control): string {
   }
 }
 
+// 省市区一类的字段：页面上可能拆成“省 ▾ 市 ▾”几个并排的下拉框
+const REGION_PATH = /^basic\.(nativePlace|hukou|sourceRegion|currentCity)$|^intention\.cities$|^internships\[\d*\]\.city$/;
+
+/** 并排的省、市下拉框：第 1 个按档案开头选省，后面的去掉上一级已选的部分再选 */
+function regionLevelChooser(c: Control, value: string): Chooser | string {
+  let rest = clean(value);
+  let prev = '';
+  if (c.level && c.prevLevel) {
+    prev = currentValue(c.prevLevel).trim();
+    if (!prev) return '上一级还没选，请先选上一级';
+    const full = clean(prev);
+    const short = shortRegion(prev);
+    if (rest.startsWith(full)) rest = rest.slice(full.length);
+    else if (rest.startsWith(short)) rest = rest.slice(short.length);
+    else return `上一级选的是“${prev}”，和档案里的“${value}”对不上`;
+  }
+  return (options) => {
+    const r = chooseRegion(rest, options);
+    if (r) return { ok: true, index: r.index, sure: true };
+    // “北京”这类直辖市：省一级选了北京，市一级是“北京市”
+    const i = prev && !rest ? chooseRepeat(prev, options) : null;
+    if (i !== null) return { ok: true, index: i, sure: true };
+    return { ok: false, reason: rest ? `选项里没有“${rest}”` : `档案里的“${value}”没写到这一级，请自己选` };
+  };
+}
+
 async function write(c: Control, path: string, value: string, sure: boolean): Promise<Outcome> {
   const isDate = DATE_PATH.test(path);
   // 学校、专业：选项写法常和档案不同，用模糊匹配（计划书 V2）
   const fk = fuzzyKindOf(path);
-  const choose: Chooser = fk ? (o) => chooseFuzzy(value, o, fk) : (o) => chooseOption(value, o);
+  let choose: Chooser = fk ? (o) => chooseFuzzy(value, o, fk) : (o) => chooseOption(value, o);
+  if (c.level !== undefined && REGION_PATH.test(path)) {
+    const r = regionLevelChooser(c, value);
+    if (typeof r === 'string') return skip(r);
+    choose = r;
+  }
   const query = fk === 'school' ? expandSchool(value) : value;
   switch (c.kind) {
     case 'text': case 'textarea': case 'date': case 'month': return fillText(c, value, sure, isDate);
     case 'select': return fillNativeSelect(c, value, sure, choose);
     case 'radio': return fillRadio(c, value, sure, choose);
-    case 'antd-select': return fillCustomSelect(c, value, sure, ANTD, choose, query);
+    case 'antd-select': return fillCustomSelect(c, value, sure, antdFor(c.el), choose, query);
     case 'el-select': return fillCustomSelect(c, value, sure, ELEMENT, choose, query);
     case 'antd-picker': case 'el-picker': return fillPicker(c, value, sure);
     case 'cascader': return fillCascader(c, value, sure);
@@ -690,7 +740,10 @@ async function restore(e: FillEntry): Promise<boolean> {
       return radios.every((r, i) => r.checked === (i === was));
     }
     case 'antd-select':
-      return (await clickClear(c.el, '.ant-select-clear')) && !ANTD.selected(c.el);
+    {
+      const p = antPrefix(c.el);
+      return (await clickClear(c.el, `.${p}-select-clear, .${p}-select-selection__clear`)) && !antdFor(c.el).selected(c.el);
+    }
     case 'el-select':
       return (await clickClear(c.el, '.el-select__clear')) && !ELEMENT.selected(c.el);
     case 'antd-picker':

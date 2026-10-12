@@ -40,17 +40,25 @@ function scoreText(text: string, aliases: string[], base: number): number {
 
 // 只会是文本框的字段：页面上这个标签下的下拉框（如手机号前面的区号）不是它
 const TEXT_ONLY = new Set(['basic.name', 'basic.phone', 'basic.email', 'basic.idNumber', 'basic.address']);
+const YES_NO = /^(是否|有无|有没有)/;
 const CHOICE_KINDS = new Set<Control['kind']>(['select', 'radio', 'div-radio', 'antd-select', 'el-select', 'moka-select', 'phoenix-select', 'cascader']);
 
 function scoreAlias(c: Control, a: Alias): number {
-  const label = clean(c.label);
+  // 括号里是补充说明：“生源地（高考户籍地）”按“生源地”认，不能因为“户籍地”认成户口
+  const full = clean(c.label);
+  const label = full.replace(/\([^)]*\)/g, '') || full;
   const ph = clean(c.placeholder);
-  const all = `${label}|${ph}`;
+  const all = `${full}|${ph}`;
   if (a.exclude?.some((x) => all.includes(clean(x)))) return 0;
   if (TEXT_ONLY.has(a.path) && CHOICE_KINDS.has(c.kind)) return 0;
 
+  // “是否……”“有无……”是是非题，只对得上同样是问句的字段（如“是否服从调剂”）
+  if (YES_NO.test(label) && !a.strong.some((x) => YES_NO.test(clean(x)))) return 0;
+
   const known = c.section !== null;
-  if (known && !a.home.includes(c.section!)) return 0;
+  // 基本信息里的“毕业院校、专业、学历”指最高学历那段（档案第 1 段教育经历）
+  const summary = c.section === 'basic' && a.path.startsWith('education[]');
+  if (known && !a.home.includes(c.section!) && !summary) return 0;
   // 泛称只在字段的主分区里算数
   let aliases = known && c.section === a.home[0] ? [...a.strong, ...(a.ctx ?? [])] : a.strong;
   // “就读时间：年 月 - 年 月”这类合在一起的起止时间
@@ -82,8 +90,10 @@ export function matchControl(c: Control, profile: Profile): MatchResult {
     return { path: null, reason: c.label || c.placeholder ? '没认出这个字段' : '这个字段没有标签，无法判断' };
   }
   const close = second && best.score - second.score < MARGIN;
+  let path = c.range === 'end' ? best.path.replace(/\.start$/, '.end') : best.path;
+  if (c.section === 'basic') path = path.replace(/^education\[\]/, 'education[0]');
   return {
-    path: c.range === 'end' ? best.path.replace(/\.start$/, '.end') : best.path,
+    path,
     score: best.score,
     confidence: best.score >= HIGH && !close ? 'high' : 'low',
     runnerUp: close ? second.path : undefined,

@@ -22,6 +22,9 @@ export interface Control {
   part?: 'year' | 'month';
   /** 起止时间放在同一个标签下时：这个框属于开始还是结束 */
   range?: 'start' | 'end';
+  /** 同一个标签下并排的几个下拉框（如“现居住地：省 ▾ 市 ▾”）：这是第几级，以及上一级 */
+  level?: number;
+  prevLevel?: Control;
   label: string;
   placeholder: string;
   keys: string[];
@@ -30,13 +33,17 @@ export interface Control {
   required: boolean;
 }
 
-const CUSTOM_SELECT = '.ant-select, .el-select, .el-select-v2';
+// [class*="-select-enabled"]：改了类名前缀的 Ant Design 3（飞书招聘是 atsx-select）
+const CUSTOM_SELECT = '.ant-select, .el-select, .el-select-v2, [class*="-select-enabled"]';
+const EL_SELECT = '.el-select, .el-select-v2';
 const CASCADER = '.ant-cascader, .el-cascader';
 const PICKER = '.ant-picker, .el-date-editor';
 // 站点组件（以真实页面快照为准，见 tests/fixtures/forms/real）
 const MOKA_SELECT = 'label[class*="sd-Select-container"]';
 const PHOENIX_SELECT = '.phoenix-select';
 const DIV_RADIO = '.phoenix-radio-group';
+/** 飞书招聘的“年-月 至 年-月”面板，只能点开选 */
+const PERIOD_PICKER = '.atsx-date-picker';
 const FORM_ITEM = '.ant-form-item, .el-form-item, .form-item, .form-group, [class*="form-item"], [class*="formItem"], [class*="FormItem"], [class*="field-item"], [class*="apply-field"], .field, dl, tr, li';
 /** 只读输入框里像“要点开面板选”的：日期、省市区等 */
 const PICKER_HINT = /选择|日期|时间|年|月|省|市|区|地/;
@@ -74,7 +81,8 @@ function labelInContainer(container: Element, anchor: Element, skipOptionLabels:
     if (l.contains(anchor) || anchor.contains(l)) continue;
     if (skipOptionLabels && l.querySelector('input[type=radio], input[type=checkbox]')) continue;
     if (l.querySelector('input:not([type=hidden]), textarea, select')) continue;
-    const t = short(textOf(l, MAX_LABEL + 5));
+    // 标签区里还有说明文字时（飞书“起止时间 / 无准确的毕业时间可填写预计毕业时间”），只取 <label>
+    const t = short(textOf(l.querySelector('label') ?? l, MAX_LABEL + 5));
     if (t) return t;
   }
   return '';
@@ -191,6 +199,8 @@ function datePart(root: HTMLElement, input: HTMLInputElement | null): Partial<Co
 function isRequired(el: HTMLElement, input: HTMLElement | null, label: string, part?: Control['part']): boolean {
   if (input?.hasAttribute('required') || input?.getAttribute('aria-required') === 'true') return true;
   if (/^\s*[*＊]|[*＊]\s*[:：]?\s*$/.test(label)) return true;
+  // Ant Design 式表单项：标签上带必填类（如飞书手机号，框前面还有区号下拉，下面的逐层查找会提前停下）
+  if (labelRequired(el)) return true;
   // 年、月分开选的几个框同属一个字段，直接看外层表单项
   let n: Element | null = part ? el.closest(FORM_ITEM) : el.parentElement;
   for (let depth = 0; n && depth < 8 && !n.matches('form, body'); n = n.parentElement, depth++) {
@@ -198,6 +208,16 @@ function isRequired(el: HTMLElement, input: HTMLElement | null, label: string, p
     if ([...n.querySelectorAll(REQUIRED_MARK)].some((m) => !el.contains(m) || m === el)) return true;
     if (hasCssStar(n, el)) return true;
     if (part) break;
+  }
+  return false;
+}
+
+/** 往上找到“标签 + 控件”结构的表单项，看它的标签是否标了必填 */
+function labelRequired(el: HTMLElement): boolean {
+  let n: Element | null = el.parentElement;
+  for (let depth = 0; n && depth < 8 && !n.matches('form, body'); n = n.parentElement, depth++) {
+    const head = [...n.children].find((c) => /(^|\s)[\w-]*form-item-label(\s|$)/.test(c.className));
+    if (head) return !!head.querySelector('[class*="required" i]') || /(^|\s)[\w-]*required/i.test(head.className);
   }
   return false;
 }
@@ -253,7 +273,7 @@ function detectIn(doc: FormRoot): Control[] {
   };
 
   // 自定义组件：先认出根节点，它们内部的原生 input 不再单独算
-  const roots = `${CASCADER}, ${CUSTOM_SELECT}, ${PICKER}, ${MOKA_SELECT}, ${PHOENIX_SELECT}, ${DIV_RADIO}`;
+  const roots = `${CASCADER}, ${CUSTOM_SELECT}, ${PICKER}, ${MOKA_SELECT}, ${PHOENIX_SELECT}, ${DIV_RADIO}, ${PERIOD_PICKER}`;
   for (const root of doc.querySelectorAll<HTMLElement>(roots)) {
     if (!isVisible(root) || [...consumed].some((c) => c.contains(root))) continue;
     const input = root.querySelector<HTMLInputElement>('input');
@@ -267,19 +287,21 @@ function detectIn(doc: FormRoot): Control[] {
       continue;
     }
     consumed.add(root);
-    if (root.matches(CASCADER)) push('cascader', root, input);
+    if (root.matches(PERIOD_PICKER)) push('readonly', root, null);
+    else if (root.matches(CASCADER)) push('cascader', root, input);
     else if (root.matches('.ant-picker')) push('antd-picker', root, input);
     else if (root.matches('.el-date-editor')) push('el-picker', root, input);
-    else if (root.matches('.ant-select')) push('antd-select', root, input);
     else if (root.matches(MOKA_SELECT)) push('moka-select', root, input, datePart(root, input));
     else if (root.matches(PHOENIX_SELECT)) push('phoenix-select', root, input);
-    else push('el-select', root, input);
+    else if (root.matches(EL_SELECT)) push('el-select', root, input);
+    else push('antd-select', root, input);
   }
 
   for (const el of doc.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select')) {
     if ([...consumed].some((c) => c.contains(el))) continue;
     const kind = nativeKind(el);
     if (!kind || el.disabled) continue;
+    if (/hidden-input/.test(el.className)) continue; // 组件自己藏起来的辅助输入框
     if (kind !== 'radio' && kind !== 'checkbox' && kind !== 'file' && !isVisible(el)) continue;
     if (isTag(el, 'input') && el.readOnly && kind === 'text') {
       // 只读框一般是点开面板选的（日期、省市区），列出来告诉用户要自己选
@@ -290,7 +312,7 @@ function detectIn(doc: FormRoot): Control[] {
 
     if (kind === 'radio') {
       const r = el as HTMLInputElement;
-      const group = r.closest<HTMLElement>('[role=radiogroup], .ant-radio-group, .el-radio-group');
+      const group = r.closest<HTMLElement>('[role=radiogroup], .ant-radio-group, .el-radio-group, [class*="-radio-group"]');
       const key: string | Element = group ?? (r.name ? `name:${r.name}` : r);
       if (seenRadio.has(key)) continue;
       seenRadio.add(key);
@@ -312,7 +334,37 @@ function detectIn(doc: FormRoot): Control[] {
   }
 
   // 按文档顺序排列
-  return out.sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+  out.sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+  markLevels(out);
+  return out;
+}
+
+const LEVEL_KINDS = new Set<ControlKind>(['antd-select', 'el-select', 'moka-select', 'phoenix-select', 'select']);
+
+/** 同一个表单项里并排的几个下拉框（省 ▾ 市 ▾）：按顺序标上第几级 */
+function markLevels(controls: Control[]) {
+  const groups = new Map<Element, Control[]>();
+  for (const c of controls) {
+    if (!LEVEL_KINDS.has(c.kind) || c.part) continue;
+    const item = fieldItem(c.el);
+    if (!item) continue;
+    const g = groups.get(item) ?? [];
+    g.push(c);
+    groups.set(item, g);
+  }
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    g.forEach((c, i) => { c.level = i; if (i) c.prevLevel = g[i - 1]; });
+  }
+}
+
+/** 控件所在的表单项：往上第一个带标签区的容器（Ant Design 的 form-item-label、Element 的 el-form-item__label） */
+function fieldItem(el: HTMLElement): Element | null {
+  let n: Element | null = el.parentElement;
+  for (let depth = 0; n && depth < 8 && !n.matches('form, body'); n = n.parentElement, depth++) {
+    if ([...n.children].some((c) => /(^|\s)[\w-]*(form-item-label|form-item__label)(\s|$)/.test(c.className))) return n;
+  }
+  return null;
 }
 
 /** 结果面板里显示的字段名：去掉星号、冒号和“请输入”之类的提示词 */
