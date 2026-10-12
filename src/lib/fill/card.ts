@@ -1,5 +1,6 @@
 import { candidatesFor, filterCandidates, type Candidate } from './candidates';
-import { isEmpty, pickable, type FillEntry } from './fill';
+import { ANSWER_PREFIX, isEmpty, pickable, type FillEntry } from './fill';
+import { similarAnswers, type Answer } from '../answers/library';
 import type { Profile } from '../profile/schema';
 
 // 候选卡（计划书 V5）：插件没填的字段，用户点进去时在旁边列出档案里的值，点一项写入。
@@ -19,15 +20,25 @@ export interface CardOptions {
   profile: Profile;
   /** 写入并更新记录，返回是否写成功 */
   onPick: (e: PickEvent) => Promise<boolean>;
+  /** 回答库（计划书 L4）：多行文本框里列出相似题的旧回答 */
+  answers?: Answer[];
+}
+
+/** 多行文本框（问答题）：回答库里相似题的旧回答 */
+export function answerCandidates(entry: FillEntry, answers: Answer[]): Candidate[] {
+  if (entry.control.kind !== 'textarea' || !answers.length) return [];
+  const q = `${entry.control.label} ${entry.control.placeholder}`.trim();
+  return similarAnswers(q, answers).map(({ answer: a }) =>
+    ({ path: `${ANSWER_PREFIX}${a.id}`, label: `回答库 · ${a.question}${a.company ? `（写给${a.company}）` : ''}`, value: a.text }));
 }
 
 /** 这个字段要不要弹候选卡：插件没填、还空着、能写入、档案里有能填的值 */
-export function cardEntry(entries: FillEntry[], target: EventTarget | null, profile: Profile): { entry: FillEntry; list: Candidate[] } | null {
+export function cardEntry(entries: FillEntry[], target: EventTarget | null, profile: Profile, answers: Answer[] = []): { entry: FillEntry; list: Candidate[] } | null {
   if (!target || typeof (target as Node).nodeType !== 'number') return null;
   const node = target as Node;
   const entry = entries.find((e) => e.control.el === node || e.control.el.contains(node) || e.control.radios?.includes(node as HTMLInputElement));
   if (!entry || entry.item.status !== 'skip' || !pickable(entry.control) || !isEmpty(entry.control)) return null;
-  const list = candidatesFor(entry.control, profile);
+  const list = [...answerCandidates(entry, answers), ...candidatesFor(entry.control, profile)];
   return list.length ? { entry, list } : null;
 }
 
@@ -116,9 +127,10 @@ export function startCandidateCard(doc: Document, entries: FillEntry[], opts: Ca
     host.id = HOST_ID;
     const root = host.attachShadow({ mode: 'open' });
     const name = entry.item.label.replace(/（.*$/, '') || '这个字段';
+    const from = list.some((c) => c.path.startsWith(ANSWER_PREFIX)) ? '从回答库或档案里' : '从档案里';
     root.innerHTML = `<style>${CSS}</style>
-      <div class="card" role="dialog" aria-label="从档案里选一项填入">
-        <div class="head"><div class="title">从档案里选一项填入 <b></b></div><button class="x" type="button" aria-label="关闭，这个字段不再提示">×</button></div>
+      <div class="card" role="dialog" aria-label="${from}选一项填入">
+        <div class="head"><div class="title">${from}选一项填入 <b></b></div><button class="x" type="button" aria-label="关闭，这个字段不再提示">×</button></div>
         ${list.length > 6 ? '<input class="q" type="search" placeholder="搜索档案里的内容" aria-label="搜索档案里的内容">' : ''}
         <ul role="listbox"></ul>
         <div class="msg" hidden></div>
@@ -163,7 +175,7 @@ export function startCandidateCard(doc: Document, entries: FillEntry[], opts: Ca
   const onFocus = (ev: Event) => {
     const target = ev.composedPath()[0] ?? ev.target;
     if (host && ev.composedPath().includes(host)) return;
-    const hit = cardEntry(entries, target as EventTarget, opts.profile);
+    const hit = cardEntry(entries, target as EventTarget, opts.profile, opts.answers);
     if (!hit || dismissed.has(hit.entry.control.el)) {
       if (current && !(current.control.el.contains(target as Node))) close();
       return;

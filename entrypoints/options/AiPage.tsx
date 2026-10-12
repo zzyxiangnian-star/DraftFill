@@ -1,9 +1,10 @@
-import { ArrowLeft, CalendarPlus, Check, ClipboardCopy, KeyRound, ListPlus, Loader2, Settings, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BookmarkPlus, CalendarPlus, Check, KeyRound, ListPlus, Loader2, Settings, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { iconProps } from '@/src/components/icon';
 import { providerById } from '@/src/lib/ai/providers';
 import { NOT_SENT_LABEL, resumeForAi, scrub, SENT_LABEL } from '@/src/lib/ai/redact';
 import { runSkill } from '@/src/lib/ai/run';
+import { countChars } from '@/src/lib/ai/skills/index';
 import { diagnoseSkill, type DiagnoseResult } from '@/src/lib/ai/skills/diagnose';
 import { jdMatchSkill, type JdResult } from '@/src/lib/ai/skills/jdMatch';
 import { openQuestionSkill, type OpenQResult } from '@/src/lib/ai/skills/openQuestion';
@@ -15,15 +16,20 @@ import { noticeSkill, type NoticeEvent, type NoticeResult } from '@/src/lib/ai/s
 import { toIcs } from '@/src/lib/tracker/ics';
 import { AiSettingsCard, ensureAccess, useAiSettings } from './AiSettingsCard';
 import { AskAi } from './AskAi';
+import { AnswerLibrary, useAnswers } from './AnswerLibrary';
+import { answerAdaptSkill, type AdaptResult } from '@/src/lib/ai/skills/answerAdapt';
+import { addAnswer, markUsed, similarAnswers, type Answer } from '@/src/lib/answers/library';
+import { Copy } from './Copy';
 import { SkillSettings } from './SkillSettings';
 
-type Tool = 'ask' | 'diagnose' | 'polish' | 'jd' | 'question' | 'notice';
+type Tool = 'ask' | 'diagnose' | 'polish' | 'jd' | 'question' | 'answers' | 'notice';
 const TOOLS: { id: Tool; label: string; desc: string }[] = [
   { id: 'ask', label: '问 AI', desc: '求职上的任何问题都可以问：简历、面试、网申问答题、笔试、offer、邮件……插件会自动挑最合适的技能来回答。' },
   { id: 'diagnose', label: '简历诊断', desc: '按 HR 初筛的标准逐条检查，告诉你最该改的地方，以及面试官可能追问什么。' },
   { id: 'polish', label: '经历润色', desc: '按 STAR 法则改写实习、项目、校园经历的描述。只改写法，不编造数字和经历，满意可以一键写回档案。' },
   { id: 'jd', label: '岗位分析', desc: '粘贴岗位描述，拆出硬性要求和关键词，逐条对照你的经历，看哪段该突出、缺什么。' },
   { id: 'question', label: '开放题写作', desc: '网申里的问答题（为什么选择我们、最有成就感的事……），按题型写 3 个版本，严格控制字数。' },
+  { id: 'answers', label: '回答库', desc: '存你写过的好回答。网申页面上点进问答题时，相似题的回答会出现在候选卡里，点一下填入；写新题时也会列出来，可以让 AI 按新题改写。' },
   { id: 'notice', label: '通知整理', desc: '粘贴笔试、测评、面试通知，摘出时间、链接和要准备的东西，存成日历文件（手机、电脑日历都能导入），也能记到投递看板。' },
 ];
 
@@ -75,14 +81,6 @@ function RunButton({ r, label, onClick, disabled }: { r: ReturnType<typeof useRu
 }
 
 const ErrorLine = ({ text }: { text: string | null }) => (text ? <div className="notice notice-err enter" role="alert">{text}</div> : null);
-
-function Copy({ text }: { text: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button className="btn btn-text small" onClick={async () => { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500); }}>
-      {done ? <Check {...iconProps} /> : <ClipboardCopy {...iconProps} />} {done ? '已复制' : '复制'}</button>
-  );
-}
 
 function Score({ value, label }: { value: number | null; label: string }) {
   if (value === null) return null;
@@ -341,6 +339,54 @@ function Notice({ profile }: { profile: Profile }) {
 }
 
 // —— 开放题 ——
+function SaveButton({ saved, onClick }: { saved: boolean; onClick: () => void }) {
+  return (
+    <button className="btn btn-text small" disabled={saved} onClick={onClick}>
+      {saved ? <Check {...iconProps} /> : <BookmarkPlus {...iconProps} />} {saved ? '已存进回答库' : '存进回答库'}</button>
+  );
+}
+
+/** 计划书 L4：回答库里的相似题。可以直接复制，或者让 AI 按这道题改写（只发这一条旧回答，抹掉个人信息） */
+function SimilarAnswer({ answer, r, profile, question, limit, company, onUse, onSave, saved }: {
+  answer: Answer; r: ReturnType<typeof useRunner>; profile: Profile; question: string; limit: number; company: string;
+  onUse: () => void; onSave: (text: string) => void; saved: Set<string>;
+}) {
+  const [res, setRes] = useState<AdaptResult | null>(null);
+  const go = () => r.run((signal) => runSkill(answerAdaptSkill, {
+    question: scrub(question, profile), limit, company: scrub(company, profile),
+    oldQuestion: scrub(answer.question, profile), oldText: scrub(answer.text, profile), oldCompany: answer.company,
+  }, signal)).then((x) => { if (x) { setRes(x); onUse(); } });
+  const chars = countChars(answer.text);
+  return (
+    <div className="polish-version answer-item">
+      <div className="row" style={{ flexWrap: 'wrap' }}>
+        <strong className="answer-q">{answer.question}</strong>
+        {answer.company && <span className="tag tag-plain">写给 {answer.company}</span>}
+        <span className="spacer" />
+        <span className={`small ${limit && chars > limit ? 'text-err' : 'muted'}`}>{chars} 字{limit && chars > limit ? '，超出这道题的上限' : ''}</span>
+      </div>
+      <p className="pre answer-text">{answer.text}</p>
+      <div className="row" style={{ flexWrap: 'wrap', gap: 0 }}>
+        <Copy text={answer.text} onCopied={onUse} />
+        <button className="btn btn-text small" onClick={go} disabled={r.busy || !r.ready || question.trim().length < 4}>
+          {r.busy ? <Loader2 {...iconProps} className="spin" /> : <Sparkles {...iconProps} />} 让 AI 按这道题改写</button>
+      </div>
+      {res && (
+        <div className="stack enter" style={{ gap: 'var(--space-2)' }}>
+          <div className="row">
+            <span className="label">改写后</span><span className="spacer" />
+            <span className={`small ${res.over ? 'text-err' : 'muted'}`}>{res.chars}{limit ? ` / ${limit}` : ''} 字{res.over ? '，超出上限' : ''}</span>
+            <Copy text={res.text} />
+            <SaveButton saved={saved.has(res.text)} onClick={() => onSave(res.text)} />
+          </div>
+          <p className="pre">{res.text}</p>
+          {res.changes.length > 0 && <ul className="small muted">{res.changes.map((c) => <li key={c}>{c}</li>)}</ul>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OpenQuestion({ profile }: { profile: Profile }) {
   const r = useRunner();
   const [question, setQuestion] = useState('');
@@ -348,6 +394,19 @@ function OpenQuestion({ profile }: { profile: Profile }) {
   const [company, setCompany] = useState('');
   const [jd, setJd] = useState('');
   const [res, setRes] = useState<OpenQResult | null>(null);
+  // 题目里写了字数（“200 字以内”），字数上限跟着改
+  const onQuestion = (q: string) => {
+    setQuestion(q);
+    const m = /(\d{2,4})\s*(?:个)?字/.exec(q);
+    if (m) setLimit(m[1]!);
+  };
+  const [answers, changeAnswers] = useAnswers();
+  const [saved, setSaved] = useState<Set<string>>(new Set());
+  const similar = answers ? similarAnswers(question, answers.items, 3) : [];
+  const save = (text: string) => {
+    void changeAnswers((st) => addAnswer(st, { question, text, company: company.split(/[·\s]/)[0] ?? '' }));
+    setSaved((x) => new Set(x).add(text));
+  };
   const go = () => r.run((signal) => runSkill(openQuestionSkill, {
     question: scrub(question, profile), limit: Number(limit) || 0, company: scrub(company, profile), jd: scrub(jd, profile), resume: resumeForAi(profile),
   }, signal)).then((x) => x && setRes(x));
@@ -355,9 +414,17 @@ function OpenQuestion({ profile }: { profile: Profile }) {
     <div className="stack" style={{ gap: 'var(--space-4)' }}>
       <label className="field">
         <span className="field-label">题目</span>
-        <textarea className="input textarea" rows={3} value={question} onChange={(e) => setQuestion(e.target.value)}
+        <textarea className="input textarea" rows={3} value={question} onChange={(e) => onQuestion(e.target.value)}
           placeholder="如：请描述一次你遇到困难并最终解决的经历" />
       </label>
+      {similar.length > 0 && (
+        <div className="stack" style={{ gap: 'var(--space-2)' }}>
+          <span className="label">回答库里有相似的题</span>
+          <p className="small muted" style={{ margin: 0 }}>可以直接复制；让 AI 改写时，只发这条旧回答和题目（先抹掉手机号、邮箱、证件号和姓名），不发档案。</p>
+          {similar.map(({ answer }) => <SimilarAnswer key={answer.id} answer={answer} r={r} profile={profile}
+            question={question} limit={Number(limit) || 0} company={company} onUse={() => void changeAnswers((st) => markUsed(st, answer.id))} onSave={save} saved={saved} />)}
+        </div>
+      )}
       <div className="grid ai-grid">
         <label className="field">
           <span className="field-label">字数上限</span>
@@ -384,11 +451,12 @@ function OpenQuestion({ profile }: { profile: Profile }) {
                 <span className="label">版本 {i + 1}{v.angle ? ` · ${v.angle}` : ''}</span><span className="spacer" />
                 <span className={`small ${v.over ? 'text-err' : 'muted'}`}>{v.chars}{Number(limit) ? ` / ${limit}` : ''} 字{v.over ? '，超出上限' : ''}</span>
                 <Copy text={v.text} />
+                <SaveButton saved={saved.has(v.text)} onClick={() => save(v.text)} />
               </div>
               <p className="pre">{v.text}</p>
             </div>
           ))}
-          <p className="small muted">AI 写的是草稿：请对照真实经历修改，换成你自己的说法再提交。</p>
+          <p className="small muted">AI 写的是草稿：请对照真实经历修改，换成你自己的说法再提交。改好的版本可以存进回答库，下次遇到相似的题直接用。</p>
         </div>
       )}
     </div>
@@ -475,6 +543,7 @@ export function AiPage({ store, commit }: { store: ProfileStore; commit: (s: Pro
               : tool === 'polish' ? <Polish profile={profile} store={store} commit={commit} />
               : tool === 'jd' ? <JdMatch profile={profile} initial={jdFromBoard} />
               : tool === 'notice' ? <Notice profile={profile} />
+              : tool === 'answers' ? <AnswerLibrary />
               : <OpenQuestion profile={profile} />}
           </div>
         </section>

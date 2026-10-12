@@ -32,6 +32,9 @@ function fakeAnswer(body: string): string {
       awards: [{ name: '国家奖学金', level: '国家级', date: '2022.10' }, { name: '全国大学生数学建模竞赛省级一等奖', level: '省级', date: '2023.05' }],
     });
   }
+  if (sys.includes('现在遇到一道相似的新题')) {
+    return JSON.stringify({ text: '我选择示例科技，是因为在校园二手交易平台项目里做过订单服务，想在电商后端继续深入。', changes: ['把原来的公司名换成了示例科技'] });
+  }
   if (sys.includes('从用户粘贴的校招通知')) {
     return JSON.stringify({ company: '示例科技', position: '后端开发工程师', kind: '面试',
       events: [{ title: '一面', start: '2026-10-15 14:00', end: '2026-10-15 15:00', place: '腾讯会议', link: 'https://meeting.example.com/abc123' },
@@ -392,6 +395,50 @@ test('AI 认字段：侧边栏点一下，只发字段名；认出的标黄并�
   expect(again.submitted).toBe(false);
   await sw.evaluate(() => chrome.storage.local.remove(['fieldMemory', 'aiSettings', 'lastReport']));
   await again.close();
+});
+
+test('回答库：网申页面的问答题里列出相似题的旧回答；开放题写作里让 AI 按新题改写并存进回答库', async () => {
+  const now = Date.now();
+  await sw.evaluate((t) => chrome.storage.local.set({ answers: { version: 1, items: [
+    { id: 'a1', question: '请做一个自我评价', text: '我做事踏实，喜欢把问题追到底。', company: '华润电力', uses: 0, createdAt: t, updatedAt: t },
+    { id: 'a2', question: '为什么选择加入华润电力', text: '我看好华润电力在新能源上的投入。', company: '华润电力', uses: 0, createdAt: t, updatedAt: t },
+  ] } }), now);
+  const r = await run('native');
+  const page = ctx.pages().find((p) => p.url().endsWith('/native.html'))!;
+  await page.click('#zwpj');
+  const card = page.locator('#wangshen-card');
+  await expect(card.getByText('从回答库或档案里选一项填入')).toBeVisible();
+  if (process.env.SHOT_ANSWER_CARD) { await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOT_ANSWER_CARD }); }
+  await card.getByRole('option', { name: /回答库 · 请做一个自我评价/ }).click();
+  expect(await page.inputValue('#zwpj')).toBe('我做事踏实，喜欢把问题追到底。');
+  await expect.poll(() => sw.evaluate(async () => (await chrome.storage.local.get('answers')).answers.items.find((a: { id: string }) => a.id === 'a1').uses)).toBe(1);
+  expect(Object.keys(await sw.evaluate(async () => (await chrome.storage.local.get('fieldMemory')).fieldMemory?.items ?? {}))).toEqual([]);
+  expect(r.submitted).toBe(false);
+  await r.close();
+
+  aiRequests.length = 0;
+  await sw.evaluate((port) => chrome.storage.local.set({ aiSettings: { provider: 'custom', apiKey: 'test-key', model: 'fake', baseUrl: `http://localhost:${port}/v1` } }), PORT);
+  const id = new URL(sw.url()).host;
+  const opt = await ctx.newPage();
+  await opt.setViewportSize({ width: 1180, height: 1300 });
+  await opt.goto(`chrome-extension://${id}/options.html#ai`);
+  await opt.getByRole('tab', { name: '开放题写作' }).click();
+  await opt.getByPlaceholder(/请描述一次你遇到困难/).fill('你为什么选择我们公司？（200字以内）');
+  await expect(opt.getByText('回答库里有相似的题')).toBeVisible();
+  await opt.getByRole('button', { name: '让 AI 按这道题改写' }).first().click();
+  await expect(opt.getByText(/把原来的公司名换成了示例科技/)).toBeVisible();
+  const p = sampleProfile();
+  const sent = aiRequests.join('\n');
+  expect(sent).toContain('华润电力在新能源');
+  for (const x of [p.basic.name, p.basic.phone, p.internships[0]!.company]) expect(sent).not.toContain(x);
+  await opt.getByRole('button', { name: '存进回答库' }).first().click();
+  await expect(opt.getByRole('button', { name: '已存进回答库' })).toBeVisible();
+  if (process.env.SHOT_ANSWERS) await opt.screenshot({ path: process.env.SHOT_ANSWERS, fullPage: true });
+  await opt.getByRole('tab', { name: '回答库' }).click();
+  await expect(opt.locator('.answer-item')).toHaveCount(3);
+  if (process.env.SHOT_ANSWER_LIB) await opt.screenshot({ path: process.env.SHOT_ANSWER_LIB, fullPage: true });
+  await sw.evaluate(() => chrome.storage.local.remove(['answers', 'aiSettings', 'lastReport']));
+  await opt.close();
 });
 
 test('收藏岗位：摘出岗位和截止日期，快截止时图标提醒，看板里能跳去分析匹配度', async () => {

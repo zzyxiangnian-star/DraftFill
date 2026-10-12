@@ -687,6 +687,9 @@ export const pickable = (c: Control) => !SKIP_KIND[c.kind];
 export const isEmpty = (c: Control) => !currentValue(c).trim();
 
 /** 候选卡（计划书 V5）：用户从档案里亲手选了一项，写进这个字段并回读 */
+export const ANSWER_PREFIX = 'answer:';
+export const ANSWER_NOTE = '从回答库填的，请按这道题和这家公司改一改';
+
 export async function fillFromCandidate(e: FillEntry, path: string, value: string): Promise<FillItem> {
   if (!e.written) e.original = originalValue(e.control);
   let o: Outcome;
@@ -696,6 +699,8 @@ export async function fillFromCandidate(e: FillEntry, path: string, value: strin
     o = fail('', err instanceof SafetyError ? err.message : `填写出错：${String(err)}`);
   }
   if (o.status === 'warn') o = { ...o, status: 'ok', note: '' }; // 用户亲自选的，不用再确认
+  // 回答库里的旧回答（计划书 L4）是写给别的题、别的公司的，标黄提醒改一改
+  if (o.status === 'ok' && path.startsWith(ANSWER_PREFIX)) o = { ...o, status: 'warn', note: ANSWER_NOTE };
   e.item = { ...e.item, path, status: o.status, value: o.value, note: o.status === 'ok' ? '你从候选里选的' : o.note };
   e.written ||= o.status !== 'skip';
   return e.item;

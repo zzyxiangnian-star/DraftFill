@@ -6,6 +6,7 @@ import type { ProfileStore } from '@/src/lib/profile/schema';
 import { appendProfiles } from '@/src/lib/profile/store';
 import { applicationStoreItem, mergeApplications, type ApplicationStore } from '@/src/lib/tracker/applications';
 import { ResumeImport } from './ResumeImport';
+import { answerStoreItem, mergeAnswers } from '@/src/lib/answers/library';
 
 type Notice = { kind: 'ok' | 'err'; text: string } | null;
 
@@ -24,8 +25,9 @@ export function BackupPage({ store, commit, onCreated }: {
   }, []);
   const appCount = apps?.items.length ?? 0;
 
-  function download() {
-    const blob = new Blob([exportBackup(store.profiles, apps?.items ?? [])], { type: 'application/json' });
+  async function download() {
+    const answers = (await answerStoreItem.getValue()).items;
+    const blob = new Blob([exportBackup(store.profiles, apps?.items ?? [], answers)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = backupFileName();
@@ -34,7 +36,8 @@ export function BackupPage({ store, commit, onCreated }: {
     a.remove();
     // 立即回收会让部分浏览器丢掉文件名，稍后再回收
     setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
-    setNotice({ kind: 'ok', text: `已导出 ${store.profiles.length} 份档案${appCount ? `和 ${appCount} 条投递记录` : ''}。备份文件含个人信息，请妥善保管，不要发到群里。` });
+    const extra = [appCount ? `${appCount} 条投递记录` : '', answers.length ? `${answers.length} 条常用回答` : ''].filter(Boolean);
+    setNotice({ kind: 'ok', text: `已导出 ${store.profiles.length} 份档案${extra.length ? `和 ${extra.join('、')}` : ''}。备份文件含个人信息，请妥善保管，不要发到群里。` });
   }
 
   async function onFile(file: File | undefined) {
@@ -49,11 +52,18 @@ export function BackupPage({ store, commit, onCreated }: {
       await applicationStoreItem.setValue(m.store);
       added = m.added;
     }
+    let answersAdded = 0;
+    if (r.answers.length) {
+      const m = mergeAnswers(await answerStoreItem.getValue(), r.answers);
+      await answerStoreItem.setValue(m.store);
+      answersAdded = m.added;
+    }
     const parts = [
       r.profiles.length ? `${r.profiles.length} 份档案（${r.profiles.map((p) => p.title).join('、')}）` : '',
       added ? `${added} 条投递记录` : '',
+      answersAdded ? `${answersAdded} 条常用回答` : '',
     ].filter(Boolean);
-    setNotice({ kind: 'ok', text: `已导入 ${parts.join('和')}。原有内容没有改动。` });
+    setNotice({ kind: 'ok', text: `已导入 ${parts.join('、')}。原有内容没有改动。` });
   }
 
   return (
@@ -75,14 +85,14 @@ export function BackupPage({ store, commit, onCreated }: {
 
       <section className="card stack" style={{ gap: 'var(--space-3)' }}>
         <h2>导出备份</h2>
-        <p className="small muted">把全部 {store.profiles.length} 份档案{appCount ? `和 ${appCount} 条投递记录` : ''}保存成一个 JSON 文件。</p>
+        <p className="small muted">把全部 {store.profiles.length} 份档案{appCount ? `、${appCount} 条投递记录` : ''}和回答库保存成一个 JSON 文件。</p>
         <div><button className="btn btn-primary" disabled={!store.profiles.length && !appCount} onClick={download}>
           <Download {...iconProps} /> 导出全部档案</button></div>
       </section>
 
       <section className="card stack" style={{ gap: 'var(--space-3)' }}>
         <h2>从备份导入</h2>
-        <p className="small muted">导入的档案会作为新档案加进来，不会覆盖你现有的档案；名称重复的会自动加“（导入）”。投递记录按链接合并，不会重复。</p>
+        <p className="small muted">导入的档案会作为新档案加进来，不会覆盖你现有的档案；名称重复的会自动加“（导入）”。投递记录按链接合并，常用回答按内容合并，不会重复。</p>
         <div>
           <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => onFile(e.target.files?.[0])} />
           <button className="btn btn-secondary" onClick={() => fileRef.current?.click()}><Upload {...iconProps} /> 选择备份文件</button>

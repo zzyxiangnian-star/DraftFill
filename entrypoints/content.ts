@@ -1,5 +1,5 @@
 import { startCandidateCard, type PickEvent } from '@/src/lib/fill/card';
-import { countNewFillable, fillFromCandidate, fillFromGuess, guessPath, runFill, undoFill, unknownFields, UNKNOWN_REASON, type FillEntry, type FillItem } from '@/src/lib/fill/fill';
+import { ANSWER_PREFIX, countNewFillable, fillFromCandidate, fillFromGuess, guessPath, runFill, undoFill, unknownFields, UNKNOWN_REASON, type FillEntry, type FillItem } from '@/src/lib/fill/fill';
 import { applyMarks, clearMarks, reveal } from '@/src/lib/fill/marks';
 import { fieldMemoryItem, hostOf, remember, signature } from '@/src/lib/fill/memory';
 import { lastReportItem, pageChangeItem } from '@/src/lib/fill/reportStore';
@@ -7,6 +7,8 @@ import type { AiApplyResult, AiFieldsResult, FillResult, Request, RevealResult, 
 import type { FieldGuess } from '@/src/lib/ai/skills/fieldMatch';
 import { activeProfile, loadStore } from '@/src/lib/profile/store';
 import { extractJob } from '@/src/lib/tracker/jobPage';
+import { answerStoreItem, markUsed } from '@/src/lib/answers/library';
+import type { Profile } from '@/src/lib/profile/schema';
 
 declare global {
   interface Window {
@@ -64,8 +66,14 @@ async function fill(): Promise<FillResult> {
   applyMarks(document, run.entries);
   await pageChangeItem.setValue(null);
   watchPage(run.entries);
-  window.__wangshenCard = startCandidateCard(document, run.entries, { profile, onPick: (e) => pick(run.entries, e) });
+  await openCard(run.entries, profile);
   return { ok: true, report: run.report };
+}
+
+/** 打开候选卡；多行文本框里同时列出回答库里相似题的旧回答（计划书 L4） */
+async function openCard(entries: FillEntry[], profile: Profile) {
+  const answers = (await answerStoreItem.getValue()).items;
+  window.__wangshenCard = startCandidateCard(document, entries, { profile, answers, onPick: (e) => pick(entries, e) });
 }
 
 /** 计划书 V5 + V4：用户在候选卡里选了一项。写入、标色、更新侧边栏；勾了“记住”就按字段签名记下来。 */
@@ -79,7 +87,10 @@ async function pick(entries: FillEntry[], { entry, candidate, remember: keep }: 
     await updateReport([item]);
     const host = hostOf(location.href);
     const sig = signature(entry.control, host);
-    if (ok && keep && sig) {
+    if (ok && candidate.path.startsWith(ANSWER_PREFIX)) {
+      // 回答库的旧回答不按字段记住（每家的题不一样），只记用过几次
+      await answerStoreItem.setValue(markUsed(await answerStoreItem.getValue(), candidate.path.slice(ANSWER_PREFIX.length)));
+    } else if (ok && keep && sig) {
       const label = entry.item.label.replace(/（.*$/, '');
       await fieldMemoryItem.setValue(remember(await fieldMemoryItem.getValue(), sig, { path: candidate.path, label, host }));
     }
@@ -129,7 +140,7 @@ async function aiApply(guesses: FieldGuess[]): Promise<AiApplyResult> {
   await fieldMemoryItem.setValue(memory);
   applyMarks(document, entries);
   await updateReport(changed);
-  window.__wangshenCard = startCandidateCard(document, entries, { profile, onPick: (ev) => pick(entries, ev) });
+  await openCard(entries, profile);
   const filled = changed.filter((i) => i.status === 'warn').length;
   return { ok: true, filled, skipped: changed.length - filled };
 }

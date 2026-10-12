@@ -1,24 +1,28 @@
 import { normalizeProfile } from './normalize';
 import { normalizeApplication, type Application } from '../tracker/applications';
 import { newId, SCHEMA_VERSION, type Profile } from './schema';
+import type { Answer } from '../answers/library';
 
 // 备份文件格式。含档案和投递记录，不含 API Key（计划书第 7 节）。
-// applications 是后来加的，旧备份没有这一项，导入时当作空列表。
+// applications、answers 是后来加的，旧备份没有这两项，导入时当作空列表。
 export interface BackupFile {
   app: 'wangshen-helper';
   schemaVersion: number;
   exportedAt: string;
   profiles: Profile[];
   applications?: Application[];
+  /** 回答库（计划书 L4） */
+  answers?: Answer[];
 }
 
-export function exportBackup(profiles: Profile[], applications: Application[] = []): string {
+export function exportBackup(profiles: Profile[], applications: Application[] = [], answers: Answer[] = []): string {
   const file: BackupFile = {
     app: 'wangshen-helper',
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     profiles,
     applications,
+    answers,
   };
   return JSON.stringify(file, null, 2);
 }
@@ -30,7 +34,7 @@ export function backupFileName(date = new Date()): string {
 }
 
 export type ImportResult =
-  | { ok: true; profiles: Profile[]; applications: Application[] }
+  | { ok: true; profiles: Profile[]; applications: Application[]; answers: unknown[] }
   | { ok: false; reason: string };
 
 /**
@@ -47,12 +51,13 @@ export function parseBackup(text: string, existingTitles: string[] = []): Import
   if (typeof data !== 'object' || data === null || (data as { app?: unknown }).app !== 'wangshen-helper') {
     return { ok: false, reason: '这不是网申助手导出的备份文件。' };
   }
-  const { schemaVersion, profiles, applications } = data as Partial<BackupFile>;
+  const { schemaVersion, profiles, applications, answers } = data as Partial<BackupFile>;
+  const ans: unknown[] = Array.isArray(answers) ? answers : [];
   const apps = Array.isArray(applications) ? applications.map(normalizeApplication) : [];
   if (typeof schemaVersion === 'number' && schemaVersion > SCHEMA_VERSION) {
     return { ok: false, reason: '这份备份来自更新版本的网申助手，请先更新插件再导入。' };
   }
-  if ((!Array.isArray(profiles) || profiles.length === 0) && !apps.length) {
+  if ((!Array.isArray(profiles) || profiles.length === 0) && !apps.length && !ans.length) {
     return { ok: false, reason: '备份文件里没有档案。' };
   }
 
@@ -65,5 +70,5 @@ export function parseBackup(text: string, existingTitles: string[] = []): Import
     titles.add(title);
     return { ...p, id: newId(), title, basedOn: '', updatedAt: now };
   });
-  return { ok: true, profiles: result, applications: apps };
+  return { ok: true, profiles: result, applications: apps, answers: ans };
 }
