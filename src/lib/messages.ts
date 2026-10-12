@@ -14,6 +14,8 @@ export type Request =
   | { type: 'undo-active-tab' }
   | { type: 'undo' }
   | { type: 'reveal-active-tab'; index: number }
+  | { type: 'confirm-active-tab'; index: number }
+  | { type: 'confirm'; index: number }
   | { type: 'reveal'; index: number }
   | { type: 'job-active-tab' }
   | { type: 'job' }
@@ -45,6 +47,8 @@ export type UndoResult =
   | { ok: false; reason: string };
 
 export type RevealResult = { ok: true } | { ok: false; reason: string };
+
+export type ConfirmResult = { ok: true; item: FillItem } | { ok: false; reason: string };
 
 export type JobResult = { ok: true; job: JobInfo } | { ok: false; reason: string };
 

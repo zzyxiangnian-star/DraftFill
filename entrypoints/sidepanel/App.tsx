@@ -1,7 +1,7 @@
 import { ListChecks, Sparkles, Undo2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Logo } from '@/src/components/Logo';
-import { Counts, isMissingRequired, ItemRow, revealField, sortItems } from '@/src/components/Report';
+import { confirmField, Counts, isMissingRequired, ItemRow, revealField, sortItems } from '@/src/components/Report';
 import { iconProps } from '@/src/components/icon';
 import type { FillResult, Request, UndoResult } from '@/src/lib/messages';
 import type { FillItem, FillReport } from '@/src/lib/fill/fill';
@@ -15,8 +15,8 @@ type Tab = 'result' | 'board';
 
 // 每一项只进第一个符合的分组
 const GROUPS: { title: string; hint?: string; test: (i: FillItem) => boolean }[] = [
+  { title: '需要你看一下', hint: '红色是填了但页面显示不对；黄色核对无误后点「确定」。', test: (i) => i.status === 'err' || i.status === 'warn' },
   { title: '必填还空着', hint: '页面标了必填，插件没能填上，提交前请补上。', test: isMissingRequired },
-  { title: '需要你看一下', test: (i) => i.status === 'err' || i.status === 'warn' },
   { title: '要你自己上传的附件', hint: '浏览器不允许插件替你选文件。点一项定位到上传按钮。', test: (i) => !!i.attach },
   { title: '已填写', test: (i) => i.status === 'ok' },
   { title: '没有填写', hint: '点一项定位到字段，字段旁会列出档案里能填的内容，点一下就填上。', test: (i) => i.status === 'skip' },
@@ -72,6 +72,11 @@ function Result({ report }: { report: FillReport }) {
     setNotice(err);
   }
 
+  async function confirm(index: number) {
+    const r = await confirmField(index);
+    if (!r.ok) setNotice(r.reason);
+  }
+
   const time = new Date(report.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   return (
     <div className="stack" style={{ gap: 'var(--space-4)' }}>
@@ -111,7 +116,7 @@ function Result({ report }: { report: FillReport }) {
           <section key={title} className="stack">
             <h3 className="group-title">{title} <span className="muted">{list.length}</span></h3>
             {hint && <p className="small muted group-hint">{hint}</p>}
-            <ul className="report-list">{list.map((item) => <ItemRow key={item.index} item={item} onReveal={undone ? undefined : reveal} />)}</ul>
+            <ul className="report-list">{list.map((item) => <ItemRow key={item.index} item={item} onReveal={undone ? undefined : reveal} onConfirm={undone ? undefined : confirm} />)}</ul>
           </section>
         );
       })}

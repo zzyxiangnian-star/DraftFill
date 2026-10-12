@@ -1,7 +1,7 @@
 import { ArrowRight, PanelRight, Settings, Sparkles, Undo2, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { Logo } from '@/src/components/Logo';
-import { Counts, ReportList, revealField } from '@/src/components/Report';
+import { confirmField, Counts, ReportList, revealField } from '@/src/components/Report';
 import { StatusRow } from '@/src/components/StatusRow';
 import { iconProps } from '@/src/components/icon';
 import type { FillResult, Request, UndoResult } from '@/src/lib/messages';
@@ -37,6 +37,12 @@ export function App() {
   async function reveal(index: number) {
     const err = await revealField(index);
     if (err) setNotice(err);
+  }
+
+  async function confirm(index: number) {
+    const r = await confirmField(index);
+    if (!r.ok) return setNotice(r.reason);
+    setResult((cur) => (cur?.ok ? { ...cur, report: { ...cur.report, items: cur.report.items.map((i) => (i.index === index ? r.item : i)) } } : cur));
   }
 
   async function fill() {
@@ -105,7 +111,7 @@ export function App() {
 
       {result?.ok && (
         <div className="stack">
-          <ReportList report={result.report} limit={PREVIEW} onReveal={reveal} />
+          <ReportList report={result.report} limit={PREVIEW} onReveal={reveal} onConfirm={confirm} />
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <button className="btn btn-text small" onClick={openSidePanel}>查看全部 {result.report.items.length} 项</button>
             <button className="btn btn-text small" onClick={undo} disabled={busy}><Undo2 {...iconProps} /> 撤销本次填写</button>

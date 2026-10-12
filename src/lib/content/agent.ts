@@ -3,7 +3,7 @@ import { adoptPickers, fillFromAnswer, pageQuestions, ANSWER_PREFIX, countNewFil
 import { applyMarks, clearMarks, reveal } from '@/src/lib/fill/marks';
 import { fieldMemoryItem, hostOf, remember, signature } from '@/src/lib/fill/memory';
 import { lastReportItem, pageChangeItem } from '@/src/lib/fill/reportStore';
-import type { AiApplyResult, AiFieldsResult, AiQuestionsResult, AiWidgetsResult, AskAnswerResult, AskFieldsResult, FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
+import type { AiApplyResult, AiFieldsResult, AiQuestionsResult, AiWidgetsResult, AskAnswerResult, ConfirmResult, AskFieldsResult, FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
 import type { FieldGuess } from '@/src/lib/ai/skills/fieldMatch';
 import type { WidgetPlan } from '@/src/lib/ai/skills/widgetPlan';
 import type { QuestionAnswer } from '@/src/lib/ai/skills/pageQuestions';
@@ -256,6 +256,17 @@ async function undo(): Promise<UndoResult> {
   return { ok: true, ...r };
 }
 
+/** 用户在结果列表里点了“确定”：黄色的这一项算核对过了 */
+async function confirmAt(index: number): Promise<ConfirmResult> {
+  const entries = window.__wangshenEntries;
+  const e = entries?.[index];
+  if (!entries || !e) return { ok: false, reason: NO_RECORD };
+  if (e.item.status === 'warn') e.item = { ...e.item, status: 'ok', note: '你核对过了' };
+  applyMarks(document, entries);
+  await updateReport([e.item]);
+  return { ok: true, item: e.item };
+}
+
 function revealAt(index: number): RevealResult {
   const entry = window.__wangshenEntries?.[index];
   if (!entry || !entry.control.el.isConnected) return { ok: false, reason: NO_RECORD };
@@ -279,6 +290,7 @@ export function listen(accept: (msg: Request & { practiceTab?: number }) => bool
     if (msg.type === 'fill') { exclusive(fill).then(sendResponse, fail); return true; }
     if (msg.type === 'undo') { exclusive(undo).then(sendResponse, fail); return true; }
     if (msg.type === 'reveal') sendResponse(revealAt(msg.index));
+    if (msg.type === 'confirm') { confirmAt(msg.index).then(sendResponse, fail); return true; }
     if (msg.type === 'job') sendResponse({ ok: true, job: extractJob(document) });
     if (msg.type === 'ai-fields') { aiFields().then(sendResponse, fail); return true; }
     if (msg.type === 'ai-apply') { exclusive(() => aiApply(msg.guesses)).then(sendResponse, fail); return true; }

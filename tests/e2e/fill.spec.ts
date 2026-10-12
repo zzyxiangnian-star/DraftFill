@@ -441,6 +441,11 @@ test('AI 帮我填完：日期面板按 AI 步骤点选、档案里没有的问�
   expect(await page.inputValue('#dorm')).toBe('');
   await expect(side.locator('.report-list li', { hasText: '出生日期' })).toContainText('AI 操作面板填的');
   await expect(side.locator('.report-list li', { hasText: '为什么' })).toContainText('AI 按你的简历回答的');
+  // 黄色的项排在最前，核对后点「确定」变成已核对
+  await expect(side.locator('.report-list li').first()).toContainText('请确认');
+  await side.locator('.report-list li', { hasText: '出生日期' }).getByRole('button', { name: '确定' }).click();
+  await expect(side.locator('.report-list li', { hasText: '出生日期' })).toContainText('已核对');
+  await expect(side.locator('.report-list li', { hasText: '出生日期' }).getByRole('button', { name: '确定' })).toHaveCount(0);
 
   const p = sampleProfile();
   const sent = aiRequests.join('\n');

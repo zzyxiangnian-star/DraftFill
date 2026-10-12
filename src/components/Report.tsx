@@ -1,8 +1,6 @@
 import type { FillItem, FillReport, FillStatus } from '@/src/lib/fill/fill';
-import type { Request, RevealResult } from '@/src/lib/messages';
+import type { ConfirmResult, Request, RevealResult } from '@/src/lib/messages';
 import { StatusRow } from './StatusRow';
-
-const ORDER: FillStatus[] = ['err', 'warn', 'ok', 'skip'];
 
 export function countByStatus(items: FillItem[]): Record<FillStatus, number> {
   const c = { ok: 0, warn: 0, err: 0, skip: 0 };
@@ -13,8 +11,11 @@ export function countByStatus(items: FillItem[]): Record<FillStatus, number> {
 /** 必填但没填上的（附件另算） */
 export const isMissingRequired = (i: FillItem) => !!i.required && !i.attach && i.status === 'skip';
 
+/** 有问题的、要确认的排最前，然后是必填还空着的，最后是填好的和没填的 */
+const rank = (i: FillItem) => (i.status === 'err' ? 0 : i.status === 'warn' ? 1 : isMissingRequired(i) ? 2 : i.status === 'ok' ? 3 : 4);
+
 export function sortItems(items: FillItem[]): FillItem[] {
-  return [...items].sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
+  return [...items].sort((a, b) => rank(a) - rank(b));
 }
 
 export function Counts({ items }: { items: FillItem[] }) {
@@ -31,22 +32,32 @@ export function Counts({ items }: { items: FillItem[] }) {
   );
 }
 
-export function ItemRow({ item, onReveal }: { item: FillItem; onReveal?: (index: number) => void }) {
+export function ItemRow({ item, onReveal, onConfirm }: { item: FillItem; onReveal?: (index: number) => void; onConfirm?: (index: number) => void }) {
   const value = item.status === 'ok' ? item.value
     : item.status === 'warn' ? `${item.value}${item.note ? ` · ${item.note}` : ''}`
     : item.note;
   return <StatusRow status={item.status} name={item.label} value={<span title={value}>{value}</span>}
-    onClick={onReveal ? () => onReveal(item.index) : undefined} />;
+    onClick={onReveal ? () => onReveal(item.index) : undefined}
+    action={item.status === 'warn' && onConfirm
+      ? <button type="button" className="btn btn-secondary btn-confirm" onClick={() => onConfirm(item.index)} title="核对过了，没问题">确定</button>
+      : undefined} />;
 }
 
-export function ReportList({ report, limit, onReveal }: { report: FillReport; limit?: number; onReveal?: (index: number) => void }) {
+export function ReportList({ report, limit, onReveal, onConfirm }: {
+  report: FillReport; limit?: number; onReveal?: (index: number) => void; onConfirm?: (index: number) => void;
+}) {
   const items = sortItems(report.items);
   const shown = limit ? items.slice(0, limit) : items;
   return (
     <ul className="report-list">
-      {shown.map((item) => <ItemRow key={item.index} item={item} onReveal={onReveal} />)}
+      {shown.map((item) => <ItemRow key={item.index} item={item} onReveal={onReveal} onConfirm={onConfirm} />)}
     </ul>
   );
+}
+
+/** 用户核对过了：这一项改成已填（页面上的黄框也改掉） */
+export async function confirmField(index: number): Promise<ConfirmResult> {
+  return browser.runtime.sendMessage<Request, ConfirmResult>({ type: 'confirm-active-tab', index });
 }
 
 /** 让 background 在当前标签页里定位字段 */
