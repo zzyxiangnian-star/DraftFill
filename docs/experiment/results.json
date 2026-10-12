@@ -1,0 +1,322 @@
+{
+  "at": "2026-10-12T04:23:31.426Z",
+  "llmModel": null,
+  "rows": [
+    {
+      "page": "Moka · 达能",
+      "controls": 42,
+      "rules": {
+        "expected": 23,
+        "correct": 23,
+        "wrong": 0,
+        "missed": 0,
+        "falsePositive": 0
+      },
+      "rulesMemory": {
+        "expected": 23,
+        "correct": 23,
+        "wrong": 0,
+        "missed": 0,
+        "falsePositive": 0,
+        "userPicks": 0
+      },
+      "llm": {
+        "unknownFields": 10,
+        "canGain": 0,
+        "shouldStayEmpty": 10,
+        "calls": 1,
+        "revisitCalls": 0,
+        "promptChars": 2773,
+        "tokenEstimate": 1180,
+        "tokens": null,
+        "firstVisit": null,
+        "revisit": null
+      },
+      "missedDetails": [],
+      "unknownList": [
+        {
+          "label": "搜索职位",
+          "section": null,
+          "kind": "text",
+          "expect": null
+        },
+        {
+          "label": "第二意向城市",
+          "section": "intention",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "第三意向城市",
+          "section": "intention",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "英文名",
+          "section": "basic",
+          "kind": "text",
+          "expect": "none"
+        },
+        {
+          "label": "手机号码",
+          "section": "basic",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "是否有与你申请的部门相关的实习经历",
+          "section": "basic",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "公司性质",
+          "section": "internship",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "职位类别",
+          "section": "internship",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "最高英语水平测试及成绩",
+          "section": "language",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "荣誉类型",
+          "section": "award",
+          "kind": "choice",
+          "expect": "none"
+        }
+      ]
+    },
+    {
+      "page": "北森 · 转转",
+      "controls": 16,
+      "rules": {
+        "expected": 14,
+        "correct": 14,
+        "wrong": 0,
+        "missed": 0,
+        "falsePositive": 0
+      },
+      "rulesMemory": {
+        "expected": 14,
+        "correct": 14,
+        "wrong": 0,
+        "missed": 0,
+        "falsePositive": 0,
+        "userPicks": 0
+      },
+      "llm": {
+        "unknownFields": 1,
+        "canGain": 0,
+        "shouldStayEmpty": 1,
+        "calls": 1,
+        "revisitCalls": 0,
+        "promptChars": 2440,
+        "tokenEstimate": 1005,
+        "tokens": null,
+        "firstVisit": null,
+        "revisit": null
+      },
+      "missedDetails": [],
+      "unknownList": [
+        {
+          "label": "搜索职位关键词",
+          "section": null,
+          "kind": "text",
+          "expect": null
+        }
+      ]
+    },
+    {
+      "page": "Wecruit · 华润电力",
+      "controls": 61,
+      "rules": {
+        "expected": 32,
+        "correct": 32,
+        "wrong": 0,
+        "missed": 0,
+        "falsePositive": 0
+      },
+      "rulesMemory": {
+        "expected": 32,
+        "correct": 32,
+        "wrong": 0,
+        "missed": 0,
+        "falsePositive": 0,
+        "userPicks": 0
+      },
+      "llm": {
+        "unknownFields": 15,
+        "canGain": 0,
+        "shouldStayEmpty": 15,
+        "calls": 1,
+        "revisitCalls": 0,
+        "promptChars": 2943,
+        "tokenEstimate": 1268,
+        "tokens": null,
+        "firstVisit": null,
+        "revisit": null
+      },
+      "missedDetails": [],
+      "unknownList": [
+        {
+          "label": "国别码",
+          "section": "basic",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "国籍/地区",
+          "section": "basic",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "您有无亲属在华润电力工作",
+          "section": "basic",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "期望工作职业",
+          "section": "intention",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "期望工作职业",
+          "section": "intention",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "备选工作地点",
+          "section": "intention",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "备选工作地点",
+          "section": "intention",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "城市",
+          "section": "education",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "城市",
+          "section": "education",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "是否第一学历",
+          "section": "education",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "评价内容",
+          "section": null,
+          "kind": "textarea",
+          "expect": "none"
+        },
+        {
+          "label": "说明",
+          "section": "certificate",
+          "kind": "text",
+          "expect": "none"
+        },
+        {
+          "label": "有无论文期刊发表",
+          "section": null,
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "论文和期刊发表",
+          "section": null,
+          "kind": "textarea",
+          "expect": "none"
+        },
+        {
+          "label": "摘要",
+          "section": null,
+          "kind": "textarea",
+          "expect": "none"
+        }
+      ]
+    },
+    {
+      "page": "飞书招聘 · 沐瞳科技",
+      "controls": 17,
+      "rules": {
+        "expected": 9,
+        "correct": 9,
+        "wrong": 0,
+        "missed": 0,
+        "falsePositive": 0
+      },
+      "rulesMemory": {
+        "expected": 9,
+        "correct": 9,
+        "wrong": 0,
+        "missed": 0,
+        "falsePositive": 0,
+        "userPicks": 0
+      },
+      "llm": {
+        "unknownFields": 4,
+        "canGain": 0,
+        "shouldStayEmpty": 4,
+        "calls": 1,
+        "revisitCalls": 0,
+        "promptChars": 2537,
+        "tokenEstimate": 1055,
+        "tokens": null,
+        "firstVisit": null,
+        "revisit": null
+      },
+      "missedDetails": [],
+      "unknownList": [
+        {
+          "label": "推荐方式",
+          "section": null,
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "手机号码",
+          "section": "basic",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "国籍（地区）",
+          "section": "basic",
+          "kind": "choice",
+          "expect": "none"
+        },
+        {
+          "label": "自我评价",
+          "section": null,
+          "kind": "textarea",
+          "expect": "none"
+        }
+      ]
+    }
+  ]
+}

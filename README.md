@@ -77,6 +77,10 @@ npm run demo         # 重新生成 docs/demo.gif（需要 ffmpeg）
 
 目前每个系统只有一页，计划书要求各 3 页以上，样本还不够。下拉框的弹出选项不在快照里：北森、Moka 已在真页面上人工确认能选上；飞书、Wecruit 用的是 Ant Design 3 的写法，测试里模拟了弹层，还要在真页面上试一次。大易还没有快照。新增快照：在网申页按 Ctrl+S 保存“网页，全部”，去敏后放进这个目录并标好 `data-expect`。
 
+### 对照实验
+
+规则、字段记忆、LLM 兜底各自补了多少，见 [docs/实验报告.md](docs/实验报告.md)。简单说：规则是主力；在没见过的网站上，主要损失是认错和控件没被发现，字段记忆和 LLM 兜底都只能补“发现了但没认出”的那一小部分。`npm run experiment` 重跑，设置 `EXP_AI_BASE`、`EXP_AI_KEY`、`EXP_AI_MODEL` 后会用真实模型跑 LLM 组。
+
 ### 简历识别
 
 `tests/fixtures/resumes/` 是三份虚构简历（三种常见写法），以及由它们生成的 PDF、Word 版本，测试会逐项核对识别结果。
