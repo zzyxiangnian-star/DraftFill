@@ -5,6 +5,7 @@ import { fieldMemoryItem, hostOf, remember, signature } from '@/src/lib/fill/mem
 import { lastReportItem, pageChangeItem } from '@/src/lib/fill/reportStore';
 import type { FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
 import { activeProfile, loadStore } from '@/src/lib/profile/store';
+import { extractJob } from '@/src/lib/tracker/jobPage';
 
 declare global {
   interface Window {
@@ -122,6 +123,7 @@ export default defineContentScript({
       if (msg.type === 'fill') { exclusive(fill).then(sendResponse, fail); return true; }
       if (msg.type === 'undo') { exclusive(undo).then(sendResponse, fail); return true; }
       if (msg.type === 'reveal') sendResponse(revealAt(msg.index));
+      if (msg.type === 'job') sendResponse({ ok: true, job: extractJob(document) });
     });
   },
 });

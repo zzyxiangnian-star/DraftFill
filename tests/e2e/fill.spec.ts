@@ -286,6 +286,43 @@ test('候选卡：没填的字段点进去，从档案里选一项填上；记�
   await again.close();
 });
 
+test('收藏岗位：摘出岗位和截止日期，快截止时图标提醒，看板里能跳去分析匹配度', async () => {
+  const url = `http://localhost:${PORT}/job.html`;
+  const page = await ctx.newPage();
+  await page.goto(url);
+  const { job } = await sw.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ url: u });
+    await chrome.scripting.executeScript({ target: { tabId: tab!.id! }, files: ['/content-scripts/content.js'] });
+    return chrome.tabs.sendMessage(tab!.id!, { type: 'job' });
+  }, url) as { job: { company: string; position: string; deadline: string; jd: string; url: string } };
+  expect(job).toMatchObject({ company: '示例科技', position: '后端开发工程师', url });
+  expect(job.deadline).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(job.jd).toContain('负责订单系统');
+  expect(job.jd).not.toContain('相关推荐');
+
+  // 弹窗里点“收藏”等于存一条“已收藏”
+  await sw.evaluate((j) => chrome.storage.local.set({ applications: { version: 1, items: [{
+    id: 'job1', company: j.company, position: j.position, url: j.url, date: '2026-10-01', profileTitle: '', status: '已收藏',
+    note: '', deadline: j.deadline, jd: j.jd, createdAt: 1, updatedAt: 1 }] } }), job);
+  await expect.poll(() => sw.evaluate(() => chrome.action.getBadgeText({}))).toBe('1');
+
+  const side = await ctx.newPage();
+  await side.setViewportSize({ width: 400, height: 900 });
+  await side.goto(`chrome-extension://${new URL(sw.url()).host}/sidepanel.html`);
+  await side.getByRole('tab', { name: '投递看板' }).click();
+  await expect(side.getByText(/1 个收藏的岗位 3 天内截止/)).toBeVisible();
+  await expect(side.getByText('还剩 2 天截止')).toBeVisible();
+  if (process.env.SHOT_JOB) await side.screenshot({ path: process.env.SHOT_JOB, fullPage: true });
+  const [opt] = await Promise.all([ctx.waitForEvent('page'), side.getByRole('button', { name: '分析匹配度' }).click()]);
+  await expect(opt.getByPlaceholder(/岗位职责、任职要求/)).toHaveValue(/负责订单系统/);
+  await opt.close();
+
+  await sw.evaluate(() => chrome.storage.local.remove('applications'));
+  await expect.poll(() => sw.evaluate(() => chrome.action.getBadgeText({}))).toBe('');
+  await side.close();
+  await page.close();
+});
+
 test('AI 助手：问问题自动选技能；简历诊断按格式展示；发出去的内容不含个人信息', async () => {
   aiRequests.length = 0;
   await sw.evaluate((port) => chrome.storage.local.set({ aiSettings: { provider: 'custom', apiKey: 'test-key', model: 'fake', baseUrl: `http://localhost:${port}/v1` } }), PORT);

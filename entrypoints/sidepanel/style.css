@@ -25,7 +25,13 @@
 .app-note { color: var(--text); }
 .app-actions { display: flex; align-items: center; gap: 2px; margin-left: -8px; }
 .status-select { width: auto; height: 30px; padding: 0 28px 0 10px; font-size: var(--fs-small); border-radius: var(--radius-pill); flex: none; }
-.status-2, .status-3 { background-color: var(--brand-soft); color: var(--brand); border-color: transparent; }
-.status-4, .status-5 { color: var(--text-subtle); }
+.status-0 { border-style: dashed; }
+.status-3, .status-4 { background-color: var(--brand-soft); color: var(--brand); border-color: transparent; }
+.status-5, .status-6 { color: var(--text-subtle); }
+.deadline { display: inline-flex; align-items: center; gap: 4px; }
+.deadline-soon { color: var(--danger); font-weight: 500; }
+.deadline-past { color: var(--text-subtle); text-decoration: line-through; }
+.jd summary { cursor: pointer; color: var(--text-muted); }
+.jd p { max-height: 240px; overflow: auto; margin: var(--space-2) 0 0; white-space: pre-wrap; }
 .group-hint { margin: -4px 0 0; padding: 0 var(--space-3); }
 .notice-warn { background: var(--warning-soft); color: var(--text); }

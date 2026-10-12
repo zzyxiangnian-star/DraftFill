@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>后端开发工程师 - 示例科技校园招聘</title>
+<style>body { font: 14px/1.7 sans-serif; max-width: 760px; margin: 24px auto; }</style>
+</head>
+<body>
+<!-- 自制测试页：招聘岗位详情页，用来测试收藏岗位。截止日期由脚本写成“3 天后”，保证测试时总在提醒范围内。 -->
+<header><strong>示例科技招聘</strong> · 首页 · 校园招聘</header>
+<main>
+  <h1>后端开发工程师</h1>
+  <p>工作地点：北京　学历要求：本科及以上　网申截止：<span id="dl"></span></p>
+  <div class="job-desc">
+    <h3>岗位职责</h3>
+    <ul><li>负责订单系统的设计与开发</li><li>参与高并发服务的性能优化</li></ul>
+    <h3>任职要求</h3>
+    <ul><li>2027 届本科及以上，计算机相关专业</li><li>熟悉 Go 或 Java，了解 MySQL</li></ul>
+  </div>
+  <div>相关推荐：前端开发工程师、测试开发工程师</div>
+  <button type="button">立即投递</button>
+</main>
+<script>
+  const d = new Date(Date.now() + 2 * 86400000);
+  document.getElementById('dl').textContent = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+</script>
+</body>
+</html>

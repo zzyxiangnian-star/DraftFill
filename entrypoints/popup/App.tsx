@@ -7,6 +7,7 @@ import { iconProps } from '@/src/components/icon';
 import type { FillResult, Request, UndoResult } from '@/src/lib/messages';
 import { activeProfile, setActive } from '@/src/lib/profile/store';
 import { useProfileStore } from '@/src/lib/profile/useProfileStore';
+import { SaveJobButton } from './SaveJob';
 
 const PREVIEW = 5;
 
@@ -116,6 +117,7 @@ export function App() {
           <ArrowRight {...iconProps} className="arrow" />
         </button>
       )}
+      {!result?.ok && <SaveJobButton onNotice={setNotice} disabled={busy} />}
 
       {active && store && (
         <div className="foot">

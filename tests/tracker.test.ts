@@ -37,7 +37,7 @@ describe('投递看板', () => {
   it('CSV：带 BOM、表头中文、逗号引号转义、防公式注入', () => {
     const s = addApplication(empty(), { company: '某"公司",上海', position: '=HYPERLINK("x")', url: MOKA, profileTitle: 'A' });
     const csv = toCsv(s.items);
-    expect(csv.startsWith('﻿投递日期,公司,岗位,状态,所用档案,链接,备注\r\n')).toBe(true);
+    expect(csv.startsWith('﻿投递日期,公司,岗位,状态,截止日期,所用档案,链接,备注\r\n')).toBe(true);
     expect(csv).toContain('"某""公司"",上海"');
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
   });
@@ -64,5 +64,16 @@ describe('投递看板', () => {
     expect(guessCompany('校园招聘 | 美团')).toBe('美团');
     document.body.innerHTML = '<div>你正在投递职位: 体验运营岗（2027届校招-官网）(J15008)</div>';
     expect(guessPosition(document)).toBe('体验运营岗（2027届校招-官网）');
+  });
+});
+
+describe('收藏的岗位', () => {
+  it('收藏后再记投递：状态往前走、日期改成投递当天，截止日期和岗位描述保留', () => {
+    const MOKA2 = 'https://app.mokahr.com/campus-recruitment/x/1#/job/abc';
+    let s = addApplication({ version: 1, items: [] }, { company: '达能', position: '管培生', url: MOKA2, profileTitle: '', status: '已收藏', deadline: '2026-10-30', jd: '岗位职责……', date: '2026-10-01' });
+    s = addApplication(s, { company: '达能', position: '', url: MOKA2, profileTitle: 'A' });
+    expect(s.items).toHaveLength(1);
+    expect(s.items[0]).toMatchObject({ status: '已投递', deadline: '2026-10-30', jd: '岗位职责……', profileTitle: 'A' });
+    expect(s.items[0]!.date).not.toBe('2026-10-01');
   });
 });

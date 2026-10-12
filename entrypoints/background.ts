@@ -1,5 +1,6 @@
 import { lastReportItem } from '@/src/lib/fill/reportStore';
-import type { FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
+import { applicationStoreItem, dueSoon } from '@/src/lib/tracker/applications';
+import type { FillResult, JobResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
 
 // 用户在 popup 或侧边栏点击后才把 content script 注入当前标签页（activeTab），不常驻任何网站。
 async function injectIntoActiveTab(): Promise<{ tabId: number } | { reason: string }> {
@@ -36,12 +37,30 @@ async function handle(msg: Request): Promise<unknown> {
     }
     case 'reveal-active-tab':
       return forward<RevealResult>({ type: 'reveal', index: msg.index });
+    case 'job-active-tab':
+      return forward<JobResult>({ type: 'job' });
     default:
       return undefined;
   }
 }
 
+// 计划书 V6：收藏的岗位 3 天内截止时，在工具栏图标上显示数字。每小时检查一次（日期会变），收藏变化时也更新。
+async function updateBadge() {
+  const { items } = await applicationStoreItem.getValue();
+  const n = dueSoon(items).length;
+  const base = browser.runtime.getManifest().action?.default_title ?? '';
+  await browser.action.setBadgeBackgroundColor({ color: '#b4432f' });
+  await browser.action.setBadgeText({ text: n ? String(n) : '' });
+  await browser.action.setTitle({ title: n ? `${base}：${n} 个收藏的岗位快截止了` : base });
+}
+
 export default defineBackground(() => {
+  browser.alarms.create('deadline', { periodInMinutes: 60 });
+  browser.alarms.onAlarm.addListener((a) => { if (a.name === 'deadline') void updateBadge(); });
+  browser.runtime.onStartup.addListener(() => void updateBadge());
+  applicationStoreItem.watch(() => void updateBadge());
+  void updateBadge();
+
   browser.runtime.onMessage.addListener((msg: Request, _sender, sendResponse) => {
     if (!msg.type.endsWith('-active-tab')) return;
     handle(msg).then(sendResponse, (e) => sendResponse({ ok: false, reason: String(e) }));

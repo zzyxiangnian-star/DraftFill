@@ -1,10 +1,10 @@
-import { ClipboardList, Download, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react';
+import { AlarmClock, ClipboardList, Download, ExternalLink, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { iconProps } from '@/src/components/icon';
 import { Text } from '@/src/components/form';
 import type { FillReport } from '@/src/lib/fill/fill';
 import {
-  addApplication, applicationStoreItem, csvFileName, isRecorded, removeApplication, STATUSES, toCsv, updateApplication,
+  addApplication, applicationStoreItem, csvFileName, daysLeft, dueSoon, isRecorded, removeApplication, SOON_DAYS, STATUSES, toCsv, updateApplication,
   type Application, type ApplicationStore, type Status,
 } from '@/src/lib/tracker/applications';
 
@@ -21,22 +21,34 @@ function useApplications() {
 }
 
 /** 刚填过的页面：猜好公司和岗位，用户改一改就能记下 */
-function RecordCard({ report, onAdd }: { report: FillReport; onAdd: (company: string, position: string) => void }) {
-  const [company, setCompany] = useState(report.job?.company ?? '');
-  const [position, setPosition] = useState(report.job?.position ?? '');
-  useEffect(() => { setCompany(report.job?.company ?? ''); setPosition(report.job?.position ?? ''); }, [report.at]);
+function RecordCard({ report, saved, onAdd }: { report: FillReport; saved?: Application; onAdd: (company: string, position: string) => void }) {
+  const [company, setCompany] = useState(saved?.company || report.job?.company || '');
+  const [position, setPosition] = useState(saved?.position || report.job?.position || '');
+  useEffect(() => { setCompany(saved?.company || report.job?.company || ''); setPosition(saved?.position || report.job?.position || ''); }, [report.at]);
   return (
     <section className="card stack enter" style={{ gap: 'var(--space-3)' }}>
       <div className="label">刚填写的页面</div>
-      <p className="small muted" style={{ margin: 0 }}>自己提交以后，在这里记一条，方便之后跟进笔试、面试。</p>
+      <p className="small muted" style={{ margin: 0 }}>{saved
+        ? '这个岗位之前收藏过。自己提交以后，点下面把它改成“已投递”。'
+        : '自己提交以后，在这里记一条，方便之后跟进笔试、面试。'}</p>
       <div className="grid board-grid">
         <Text label="公司" value={company} onChange={setCompany} placeholder="如：转转" />
         <Text label="岗位" value={position} onChange={setPosition} placeholder="如：产品运营" />
       </div>
       <div><button className="btn btn-primary" disabled={!company.trim()} onClick={() => onAdd(company.trim(), position.trim())}>
-        <Plus {...iconProps} /> 记到看板</button></div>
+        <Plus {...iconProps} /> {saved ? '改为已投递' : '记到看板'}</button></div>
     </section>
   );
+}
+
+/** 截止提示：已收藏的才提醒，投了以后只显示日期 */
+function Deadline({ a }: { a: Application }) {
+  const n = daysLeft(a.deadline);
+  if (n === null) return null;
+  if (a.status !== '已收藏') return <span>截止 {a.deadline.slice(5)}</span>;
+  if (n < 0) return <span className="deadline deadline-past">已截止</span>;
+  const text = n === 0 ? '今天截止' : `还剩 ${n} 天截止`;
+  return <span className={`deadline${n <= SOON_DAYS ? ' deadline-soon' : ''}`}><AlarmClock size={12} strokeWidth={1.5} /> {text}</span>;
 }
 
 function AppItem({ a, onChange, onRemove }: { a: Application; onChange: (a: Application) => void; onRemove: () => void }) {
@@ -62,7 +74,8 @@ function AppItem({ a, onChange, onRemove }: { a: Application; onChange: (a: Appl
         </select>
       </div>
       <div className="app-meta small muted">
-        <span>{a.date}</span>
+        <span>{a.status === '已收藏' ? `收藏于 ${a.date}` : a.date}</span>
+        <Deadline a={a} />
         {a.profileTitle && <span>用「{a.profileTitle}」</span>}
         {a.note && !editing && <span className="app-note">{a.note}</span>}
       </div>
@@ -72,12 +85,24 @@ function AppItem({ a, onChange, onRemove }: { a: Application; onChange: (a: Appl
           <Text label="岗位" value={a.position} onChange={(position) => set({ position })} />
           <Text label="投递日期" type="date" value={a.date} onChange={(date) => set({ date })} />
           <Text label="备注" value={a.note} onChange={(note) => set({ note })} placeholder="如：10 月 20 日笔试" />
+          <Text label="网申截止日期" type="date" value={a.deadline} onChange={(deadline) => set({ deadline })} />
+          {a.jd && (
+            <details className="jd field-wide">
+              <summary className="small">岗位描述（{a.jd.length} 字）</summary>
+              <p className="small pre">{a.jd}</p>
+            </details>
+          )}
         </div>
       )}
       <div className="app-actions">
         {a.url && (
           <button className="btn btn-text" onClick={() => browser.tabs.create({ url: a.url })} title={a.url}>
             <ExternalLink {...iconProps} /> 打开网申页</button>
+        )}
+        {a.jd && (
+          <button className="btn btn-text" title="在 AI 助手里对照你的档案分析这个岗位"
+            onClick={() => browser.tabs.create({ url: `${browser.runtime.getURL('/options.html')}?jd=${a.id}#ai` })}>
+            <Sparkles {...iconProps} /> 分析匹配度</button>
         )}
         <button className="btn btn-text" aria-pressed={editing} onClick={() => setEditing(!editing)}>
           <Pencil {...iconProps} /> {editing ? '收起' : '编辑'}</button>
@@ -97,9 +122,12 @@ export function Board({ report }: { report: FillReport | null }) {
   if (!store) return null;
 
   const recorded = report ? isRecorded(store, report.url) : undefined;
-  const showRecord = report && !report.undoneAt && report.url && !recorded;
+  const showRecord = report && !report.undoneAt && report.url && (!recorded || recorded.status === '已收藏');
+  const soon = dueSoon(store.items);
   const counts = new Map(STATUSES.map((s) => [s, store.items.filter((a) => a.status === s).length]));
   const list = filter === 'all' ? store.items : store.items.filter((a) => a.status === filter);
+  // 只看收藏时按截止日期排，快到期的在前，没写截止日期的放最后
+  if (filter === '已收藏') list.sort((x, y) => (x.deadline || '9999').localeCompare(y.deadline || '9999'));
 
   function exportCsv() {
     const blob = new Blob([toCsv(store!.items)], { type: 'text/csv;charset=utf-8' });
@@ -115,10 +143,15 @@ export function Board({ report }: { report: FillReport | null }) {
   return (
     <div className="stack" style={{ gap: 'var(--space-4)' }}>
       {showRecord && (
-        <RecordCard report={report} onAdd={(company, position) =>
+        <RecordCard report={report} saved={recorded} onAdd={(company, position) =>
           save(addApplication(store, { company, position, url: report.url, profileTitle: report.profileTitle }))} />
       )}
-      {recorded && report && !report.undoneAt && (
+      {soon.length > 0 && (
+        <p className="notice notice-warn small" role="status">
+          <strong>{soon.length} 个收藏的岗位 {SOON_DAYS} 天内截止：</strong>{soon.map((a) => `${a.company || a.position}（${daysLeft(a.deadline) === 0 ? '今天' : a.deadline.slice(5)}）`).join('、')}
+        </p>
+      )}
+      {recorded && recorded.status !== '已收藏' && report && !report.undoneAt && (
         <p className="notice small">刚填写的页面已经记过了，当前状态：{recorded.status}。</p>
       )}
 

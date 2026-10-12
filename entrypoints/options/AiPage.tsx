@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, ClipboardCopy, KeyRound, Loader2, Settings, ShieldCheck, Sparkles, X } from 'lucide-react';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { iconProps } from '@/src/components/icon';
 import { providerById } from '@/src/lib/ai/providers';
 import { NOT_SENT_LABEL, resumeForAi, scrub, SENT_LABEL } from '@/src/lib/ai/redact';
@@ -10,6 +10,7 @@ import { openQuestionSkill, type OpenQResult } from '@/src/lib/ai/skills/openQue
 import { polishSkill, type PolishResult } from '@/src/lib/ai/skills/polish';
 import type { Profile, ProfileStore } from '@/src/lib/profile/schema';
 import { updateProfile } from '@/src/lib/profile/store';
+import { applicationStoreItem } from '@/src/lib/tracker/applications';
 import { AiSettingsCard, ensureAccess, useAiSettings } from './AiSettingsCard';
 import { AskAi } from './AskAi';
 import { SkillSettings } from './SkillSettings';
@@ -204,9 +205,9 @@ function Polish({ profile, store, commit }: { profile: Profile; store: ProfileSt
 // —— 岗位分析 ——
 const STATUS_TONE = { 已覆盖: 'good', 弱覆盖: 'mid', 未覆盖: 'low' } as const;
 
-function JdMatch({ profile }: { profile: Profile }) {
+function JdMatch({ profile, initial = '' }: { profile: Profile; initial?: string }) {
   const r = useRunner();
-  const [jd, setJd] = useState('');
+  const [jd, setJd] = useState(initial);
   const [res, setRes] = useState<JdResult | null>(null);
   const go = () => r.run((signal) => runSkill(jdMatchSkill, { jd: scrub(jd, profile), resume: resumeForAi(profile) }, signal)).then((x) => x && setRes(x));
   return (
@@ -305,6 +306,16 @@ export function AiPage({ store, commit }: { store: ProfileStore; commit: (s: Pro
   const settings = useAiSettings();
   const [view, setView] = useState<View>('main');
   const [tool, setTool] = useState<Tool>('ask');
+  // 从投递看板点“分析匹配度”进来：带上收藏时摘下的岗位描述
+  const [jdFromBoard, setJdFromBoard] = useState('');
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get('jd');
+    if (!id) return;
+    applicationStoreItem.getValue().then(({ items }) => {
+      const a = items.find((x) => x.id === id);
+      if (a?.jd) { setJdFromBoard(`${a.company} ${a.position}\n${a.jd}`.trim()); setTool('jd'); }
+    });
+  }, []);
   const [profileId, setProfileId] = useState(store.activeId);
   const profile = store.profiles.find((p) => p.id === profileId) ?? store.profiles[0];
   const meta = TOOLS.find((t) => t.id === tool)!;
@@ -363,11 +374,11 @@ export function AiPage({ store, commit }: { store: ProfileStore; commit: (s: Pro
             )}
           </div>
           <p className="small muted">{meta.desc}</p>
-          <div key={`${tool}-${profile.id}`}>
+          <div key={`${tool}-${profile.id}-${jdFromBoard.length}`}>
             {tool === 'ask' ? <AskAi profile={profile} />
               : tool === 'diagnose' ? <Diagnose profile={profile} />
               : tool === 'polish' ? <Polish profile={profile} store={store} commit={commit} />
-              : tool === 'jd' ? <JdMatch profile={profile} />
+              : tool === 'jd' ? <JdMatch profile={profile} initial={jdFromBoard} />
               : <OpenQuestion profile={profile} />}
           </div>
         </section>
