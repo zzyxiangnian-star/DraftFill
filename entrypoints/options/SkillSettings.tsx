@@ -31,7 +31,7 @@ export function SkillSettings() {
       </div>
       <div className="stack skill-opts">
         <Toggle checked={prefs.attachResume} onChange={(v) => save({ attachResume: v })}>
-          需要时附上档案里的经历（简历诊断、润色、面试等技能会用到；姓名、电话等个人信息始终不发）
+          把选中档案里的经历作为回答依据（每次提问都附上，AI 不会再让你提供简历；姓名、电话等个人信息始终不发）
         </Toggle>
       </div>
       <div className="row">
@@ -43,7 +43,7 @@ export function SkillSettings() {
         {CHAT_SKILLS.map((s) => (
           <li key={s.id} className={`skill-row${s.id !== 'general' && prefs.disabled.includes(s.id) ? ' off' : ''}`}>
             <div className="stack" style={{ gap: 2, minWidth: 0 }}>
-              <strong>{s.name}{s.needsResume && <span className="tag">用到经历</span>}</strong>
+              <strong>{s.name}</strong>
               <span className="small muted">{s.desc}</span>
               <span className="small skill-eg">例：{s.examples.join('；')}</span>
             </div>

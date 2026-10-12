@@ -63,7 +63,7 @@ export function AskAi({ profile }: { profile: Profile }) {
         ? await routeQuestion(ep, scrub(q, profile), previous, signal, skills)
         : { skill: skillById(chosen)!, by: 'manual' as const };
       const msgs: ChatMessage[] = [
-        { role: 'system', content: systemPrompt(route.skill, route.skill.needsResume && prefs.attachResume ? resumeForAi(profile) : null) },
+        { role: 'system', content: systemPrompt(route.skill, prefs.attachResume ? resumeForAi(profile) : null) },
         ...history.slice(-MAX_HISTORY).map((t) => ({ role: t.role, content: scrub(t.content, profile) })),
       ];
       const answer = await chat(ep, msgs, { temperature: 0.6, signal });
@@ -120,7 +120,7 @@ export function AskAi({ profile }: { profile: Profile }) {
       </div>
       <p className="privacy small">
         <ShieldCheck {...iconProps} aria-hidden />
-        <span>问题会发给 {provider}；{prefs.attachResume ? '需要用到你经历的技能（如简历、面试、自我介绍）会附上档案里的经历。' : '不附上档案里的经历（可在设置 → 技能里打开）。'}不会发送{NOT_SENT_LABEL}。</span>
+        <span>问题会发给 {provider}；{prefs.attachResume ? `会附上「${profile.title || '当前档案'}」里的经历，作为回答的依据。` : '不附上档案里的经历（可在设置 → 技能里打开）。'}不会发送{NOT_SENT_LABEL}。</span>
       </p>
     </div>
   );

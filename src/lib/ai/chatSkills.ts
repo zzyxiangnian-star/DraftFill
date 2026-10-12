@@ -204,6 +204,8 @@ export function systemPrompt(skill: ChatSkill, resume: string | null): string {
   return [
     COMMON,
     `当前使用的技能：${skill.name}。\n${skill.method}`,
-    resume ? `下面是候选人的简历（已去掉姓名、电话等个人信息），回答时只能使用这里的经历：\n${resume}` : '',
+    resume
+      ? `下面是候选人在插件里选中的档案整理成的简历（已去掉姓名、电话等个人信息）。这就是候选人的简历，不要再让候选人提供或粘贴简历；需要用到经历时只能用这里的内容，问题和经历无关时不必提它：\n${resume}`
+      : '',
   ].filter(Boolean).join('\n\n');
 }
