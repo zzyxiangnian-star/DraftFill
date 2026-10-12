@@ -169,3 +169,37 @@
 .gap { gap: var(--space-2); }
 .gap .input { flex: 1; min-width: 0; height: 32px; }
 .gap-before { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 使用教程 */
+.nav-guide { margin-top: var(--space-2); }
+.guide-steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.guide-list { margin: 0; padding-left: 18px; display: grid; gap: 8px; font-size: var(--fs-small); line-height: var(--lh-small); }
+.guide-list strong, .guide-steps strong { color: var(--text-strong); font-weight: 600; }
+.g-ok { color: var(--brand); font-weight: 600; } .g-warn { color: var(--warning); font-weight: 600; }
+.g-err, .g-need { color: var(--danger); font-weight: 600; }
+
+/* 气泡导览 */
+.tour-shade { position: fixed; inset: 0; z-index: 900; background: transparent; transition: background var(--dur) var(--ease); }
+.tour-shade.is-dim { background: rgba(20, 20, 19, 0.45); }
+.tour-spot { position: fixed; z-index: 901; border-radius: var(--radius-md); pointer-events: none;
+  box-shadow: 0 0 0 2px var(--brand), 0 0 0 9999px rgba(20, 20, 19, 0.45);
+  transition: top var(--dur) var(--ease), left var(--dur) var(--ease), width var(--dur) var(--ease), height var(--dur) var(--ease); }
+.tour-bubble { position: fixed; z-index: 902; width: min(340px, calc(100vw - 32px)); box-sizing: border-box; padding: var(--space-4);
+  background: var(--surface); color: var(--text); border-radius: var(--radius-md); box-shadow: var(--shadow-pop);
+  display: grid; gap: var(--space-2); opacity: 0; transform: translateY(4px);
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease), top var(--dur) var(--ease), left var(--dur) var(--ease); }
+.tour-bubble.is-ready { opacity: 1; transform: none; }
+.tour-bubble:focus { outline: none; }
+.tour-bubble::before { content: ""; position: absolute; left: calc(var(--arrow) - 7px); width: 14px; height: 14px; background: var(--surface); transform: rotate(45deg); border-radius: 3px; }
+.tour-bubble.side-top::before { top: -6px; }
+.tour-bubble.side-bottom::before { bottom: -6px; }
+.tour-bubble.side-none::before { display: none; }
+.tour-bubble h3 { margin: 0; font-size: var(--fs-h2); color: var(--text-strong); }
+.tour-bubble p { margin: 0; font-size: var(--fs-small); line-height: 1.65; color: var(--text-muted); }
+.tour-top { min-height: 24px; }
+.tour-x { width: 28px; height: 28px; padding: 0; }
+.tour-dots { display: flex; gap: 4px; padding: 4px 0; }
+.tour-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--surface-strong); transition: width var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.tour-dots span.on { width: 16px; border-radius: 3px; background: var(--brand); }
+.tour-actions { gap: var(--space-2); }
+.tour-actions .btn-primary { height: 38px; }

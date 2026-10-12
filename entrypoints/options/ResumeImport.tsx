@@ -72,7 +72,7 @@ export function ResumeImport({ store, commit, onCreated }: {
     : [];
 
   return (
-    <section className="card stack" style={{ gap: 'var(--space-3)' }}>
+    <section className="card stack" style={{ gap: 'var(--space-3)' }} data-tour="resume-import">
       <h2>从简历导入</h2>
       <p className="small muted">选一份 PDF 或 Word 简历，自动认出姓名、学校、实习经历等，存成一份新档案。在这台电脑上识别，不会上传；只有你点「用 AI 整理经历」时，才把去掉个人信息的正文发给 AI。</p>
       <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"

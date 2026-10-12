@@ -50,7 +50,7 @@ export function ProfilePage({ store, commit, editingId, setEditingId, goImport }
 
   return (
     <>
-      <div className="profile-tabs" role="tablist" aria-label="档案">
+      <div className="profile-tabs" role="tablist" aria-label="档案" data-tour="profile-tabs">
         {store.profiles.map((p) => (
           <button key={p.id} role="tab" aria-selected={p.id === current.id} className="profile-tab" onClick={() => setEditingId(p.id)}>
             {p.title || '未命名档案'}

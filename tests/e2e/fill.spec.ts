@@ -479,6 +479,49 @@ test('缺信息询问：必填项档案里没有，侧边栏问你；答了才�
   await again.close();
 });
 
+test('使用教程：气泡导览逐页走完；练习页上一键填充能用、不提交', async () => {
+  const id = new URL(sw.url()).host;
+  const opt = await ctx.newPage();
+  await opt.setViewportSize({ width: 1180, height: 860 });
+  const errors: string[] = [];
+  opt.on('pageerror', (e) => errors.push(e.message));
+  await opt.goto(`chrome-extension://${id}/options.html#guide`);
+  await expect(opt.getByRole('heading', { name: '使用教程', level: 1 })).toBeVisible();
+  if (process.env.SHOT_GUIDE) await opt.screenshot({ path: process.env.SHOT_GUIDE });
+  await opt.getByRole('button', { name: '开始导览' }).click();
+  const bubble = opt.getByRole('dialog');
+  const pages: string[] = [];
+  for (let n = 1; ; n++) {
+    await expect(bubble).toContainText(new RegExp(`^${n} / \\d+`));
+    pages.push(new URL(opt.url()).hash);
+    if (process.env.SHOT_TOUR && n === 3) { await opt.waitForTimeout(500); await opt.screenshot({ path: process.env.SHOT_TOUR }); }
+    const done = bubble.getByRole('button', { name: '完成' });
+    if (await done.count()) { await done.click(); break; }
+    await bubble.getByRole('button', { name: '下一步' }).click();
+  }
+  await expect(bubble).toHaveCount(0);
+  expect(new Set(pages)).toEqual(new Set(['#profile', '#backup', '#ai', '#rules', '#guide']));
+  expect(errors).toEqual([]);
+
+  // 练习页：从侧边栏点填写，填到练习页上
+  const [practice] = await Promise.all([ctx.waitForEvent('page'), opt.getByRole('button', { name: '打开练习页' }).first().click()]);
+  await practice.waitForLoadState();
+  const side = await ctx.newPage();
+  await side.goto(`chrome-extension://${id}/sidepanel.html`);
+  await practice.bringToFront();
+  const r = await side.evaluate(() => chrome.runtime.sendMessage({ type: 'fill-active-tab' })) as { ok: boolean; report: { items: { label: string; status: string }[] } };
+
+  expect(r).toMatchObject({ ok: true });
+  expect(await practice.inputValue('#xm')).toBe('王小明');
+  expect(await practice.inputValue('#ssl')).toBe('');
+  expect(await practice.locator('#submit-msg').textContent()).toBe('');
+  await practice.click('#ssl');
+  await expect(practice.locator('#wangshen-card').getByRole('dialog')).toBeVisible();
+  if (process.env.SHOT_PRACTICE) await practice.screenshot({ path: process.env.SHOT_PRACTICE, fullPage: true });
+  await sw.evaluate(() => chrome.storage.local.remove(['lastReport']));
+  await Promise.all([opt.close(), practice.close(), side.close()]);
+});
+
 test('收藏岗位：摘出岗位和截止日期，快截止时图标提醒，看板里能跳去分析匹配度', async () => {
   const url = `http://localhost:${PORT}/job.html`;
   const page = await ctx.newPage();

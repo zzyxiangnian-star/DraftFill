@@ -3,8 +3,13 @@ import { applicationStoreItem, dueSoon } from '@/src/lib/tracker/applications';
 import type { AiApplyResult, AiFieldsResult, AskAnswerResult, AskFieldsResult, FillResult, JobResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
 
 // 用户在 popup 或侧边栏点击后才把 content script 注入当前标签页（activeTab），不常驻任何网站。
-async function injectIntoActiveTab(): Promise<{ tabId: number } | { reason: string }> {
+async function injectIntoActiveTab(): Promise<{ tabId: number; practice?: boolean } | { reason: string }> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  // 插件自带的练习页：页面自己带着填写助手，不用注入。没有 tabs 权限时可能读不到地址，就问一下这个标签页
+  if (tab?.id && (!tab.url || tab.url.startsWith(browser.runtime.getURL('/practice.html')))) {
+    const pong = await browser.runtime.sendMessage({ type: 'practice-ping', practiceTab: tab.id }).catch(() => null) as { ok?: boolean } | null;
+    if (pong?.ok) return { tabId: tab.id, practice: true };
+  }
   if (!tab?.id || !tab.url || !/^https?:|^file:/.test(tab.url)) {
     return { reason: '当前页面不是网页，浏览器不允许插件读取。' };
   }
@@ -19,6 +24,7 @@ async function injectIntoActiveTab(): Promise<{ tabId: number } | { reason: stri
 async function forward<T extends { ok: boolean }>(msg: Request): Promise<T | { ok: false; reason: string }> {
   const t = await injectIntoActiveTab();
   if ('reason' in t) return { ok: false, reason: t.reason };
+  if (t.practice) return browser.runtime.sendMessage({ ...msg, practiceTab: t.tabId });
   return browser.tabs.sendMessage(t.tabId, msg);
 }
 
@@ -63,6 +69,10 @@ async function updateBadge() {
 }
 
 export default defineBackground(() => {
+  // 第一次装上时打开使用教程（更新版本时不打开）
+  browser.runtime.onInstalled.addListener(({ reason }) => {
+    if (reason === 'install') void browser.tabs.create({ url: browser.runtime.getURL('/options.html#guide') });
+  });
   browser.alarms.create('deadline', { periodInMinutes: 60 });
   browser.alarms.onAlarm.addListener((a) => { if (a.name === 'deadline') void updateBadge(); });
   browser.runtime.onStartup.addListener(() => void updateBadge());

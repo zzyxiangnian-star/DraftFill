@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>网申助手 · 练习页</title>
+  </head>
+  <body>
+    <!-- 插件自带的练习用网申页：表单是假的，不会提交到任何地方。用来在真网站之前把一键填充走一遍。 -->
+    <aside class="guide" aria-label="练习步骤">
+      <strong>这是练习页，表单是假的，不会提交到任何地方。</strong>
+      <ol>
+        <li>点浏览器右上角的「网申助手」图标（拼图图标里也能找到），再点「一键填充」。</li>
+        <li>看字段边框的颜色：<span class="c-ok">绿</span>是已填好，<span class="c-warn">黄</span>请你核对，<span class="c-need">红色虚线</span>是必填但没填上。</li>
+        <li>点进没填的「宿舍楼号」，旁边会弹出档案里能填的内容，点一下就填上。</li>
+        <li>在弹窗里点「打开侧边栏」：逐项看结果；必填但档案里没有的，侧边栏会问你。</li>
+        <li>不满意可以点「撤销本次填写」，页面回到填写前的样子。</li>
+      </ol>
+      <p>插件不会点「提交」，真网站上也一样：检查无误后由你自己提交。</p>
+    </aside>
+
+    <main class="form-page">
+      <h1>示例科技 2027 届校园招聘 · 在线申请（练习）</h1>
+      <form id="apply" onsubmit="return false">
+        <h2>基本信息</h2>
+        <div class="row"><label for="xm"><i>*</i>姓名</label><input id="xm" required></div>
+        <div class="row"><label for="xb"><i>*</i>性别</label>
+          <select id="xb" required><option value="">请选择</option><option>男</option><option>女</option></select></div>
+        <div class="row"><label for="csrq">出生日期</label><input id="csrq" type="date"></div>
+        <div class="row"><label for="zzmm">政治面貌</label>
+          <select id="zzmm"><option value="">请选择</option><option>中共党员</option><option>中共预备党员</option><option>共青团员</option><option>群众</option></select></div>
+        <div class="row"><label for="sj"><i>*</i>手机号码</label><input id="sj" type="tel" required></div>
+        <div class="row"><label for="yx"><i>*</i>电子邮箱</label><input id="yx" type="email" required></div>
+        <div class="row"><label for="ssl"><i>*</i>宿舍楼号</label><input id="ssl" required></div>
+
+        <h2>教育经历</h2>
+        <div class="row"><label for="xx"><i>*</i>学校名称</label><input id="xx" required></div>
+        <div class="row"><label for="zy"><i>*</i>专业</label><input id="zy" required></div>
+        <div class="row"><label for="xl"><i>*</i>学历</label>
+          <select id="xl" required><option value="">请选择</option><option>博士研究生</option><option>硕士研究生</option><option>本科</option><option>大专</option></select></div>
+        <div class="row"><label for="rx">入学时间</label><input id="rx" type="month"></div>
+        <div class="row"><label for="by">毕业时间</label><input id="by" type="month"></div>
+
+        <h2>实习经历</h2>
+        <div class="row"><label for="gs">公司名称</label><input id="gs"></div>
+        <div class="row"><label for="zw">职位</label><input id="zw"></div>
+        <div class="row"><label for="nr">工作内容</label><textarea id="nr" rows="4"></textarea></div>
+
+        <h2>其他</h2>
+        <div class="row"><label for="why">你为什么选择我们公司？（300 字以内）</label><textarea id="why" rows="4"></textarea></div>
+        <div class="row"><label for="fj"><i>*</i>简历附件</label><input id="fj" type="file"></div>
+        <div class="row"><label class="check"><input type="checkbox" id="ty"> 我已阅读并同意《个人信息保护声明》</label></div>
+        <p class="submit"><button type="submit" id="submit">提交申请</button> <span id="submit-msg" role="status"></span></p>
+      </form>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

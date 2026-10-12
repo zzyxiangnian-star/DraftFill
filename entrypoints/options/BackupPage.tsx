@@ -83,7 +83,7 @@ export function BackupPage({ store, commit, onCreated }: {
           <FileText {...iconProps} /> 导出为简历</button></div>
       </section>
 
-      <section className="card stack" style={{ gap: 'var(--space-3)' }}>
+      <section className="card stack" style={{ gap: 'var(--space-3)' }} data-tour="backup-export">
         <h2>导出备份</h2>
         <p className="small muted">把全部 {store.profiles.length} 份档案{appCount ? `、${appCount} 条投递记录` : ''}和回答库保存成一个 JSON 文件。</p>
         <div><button className="btn btn-primary" disabled={!store.profiles.length && !appCount} onClick={download}>

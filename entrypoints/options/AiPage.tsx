@@ -519,7 +519,7 @@ export function AiPage({ store, commit }: { store: ProfileStore; commit: (s: Pro
           <h1>AI 助手</h1>
           <p className="muted">诊断和润色简历、分析岗位、写网申问答题。每个功能都配了专门的方法，只依据你档案里的真实经历，不编造。</p>
         </div>
-        <button className="btn btn-secondary" onClick={() => setView('api')}><Settings {...iconProps} /> 设置</button>
+        <button className="btn btn-secondary" onClick={() => setView('api')} data-tour="ai-settings"><Settings {...iconProps} /> 设置</button>
       </div>
       {settings && !settings.apiKey.trim() && (
         <div className="notice row" style={{ flexWrap: 'wrap' }}>
@@ -532,7 +532,7 @@ export function AiPage({ store, commit }: { store: ProfileStore; commit: (s: Pro
       {!profile ? <p className="muted">还没有档案，先建一份。</p> : (
         <section className="card-plain stack" style={{ gap: 'var(--space-4)' }}>
           <div className="row" style={{ flexWrap: 'wrap' }}>
-            <div className="seg" role="tablist" aria-label="AI 功能">
+            <div className="seg" role="tablist" aria-label="AI 功能" data-tour="ai-tools">
               {TOOLS.map((t) => (
                 <button key={t.id} role="tab" className="seg-item" aria-selected={tool === t.id} onClick={() => setTool(t.id)}>{t.label}</button>
               ))}

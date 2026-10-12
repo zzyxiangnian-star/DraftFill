@@ -22,7 +22,9 @@ export type Request =
   | { type: 'ask-fields-active-tab' }
   | { type: 'ask-fields' }
   | { type: 'ask-answer-active-tab'; index: number; value: string; save: boolean }
-  | { type: 'ask-answer'; index: number; value: string; save: boolean };
+  | { type: 'ask-answer'; index: number; value: string; save: boolean }
+  /** 问一个标签页是不是插件自带的练习页（没有 tabs 权限时读不到扩展页的地址） */
+  | { type: 'practice-ping' };
 
 export type FillResult =
   | { ok: true; report: FillReport }

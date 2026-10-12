@@ -30,7 +30,7 @@ export function MemoryCard({ store }: { store: ProfileStore }) {
   const hosts = [...byHost.entries()].sort((a, b) => Math.max(...b[1].map((x) => x.at)) - Math.max(...a[1].map((x) => x.at)));
 
   return (
-    <section className="card stack" style={{ gap: 'var(--space-3)' }}>
+    <section className="card stack" style={{ gap: 'var(--space-3)' }} data-tour="memory">
       <div className="row">
         <h2 style={{ flex: 1 }}>记住的字段</h2>
         {hosts.length > 0 && <button className="btn btn-text small" onClick={() => save(forget(mem))}><Trash2 {...iconProps} /> 全部清除</button>}

@@ -1,4 +1,4 @@
-import { FileJson, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { BookOpen, FileJson, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Logo } from '@/src/components/Logo';
 import { iconProps } from '@/src/components/icon';
@@ -8,12 +8,15 @@ import { BackupPage } from './BackupPage';
 import { MemoryCard } from './MemoryCard';
 import { SECTIONS } from './ProfileEditor';
 import { ProfilePage } from './ProfilePage';
+import { GuidePage } from './GuidePage';
+import { Tour } from './Tour';
 
 const PAGES = [
   { id: 'profile', label: '个人档案', Icon: UserRound },
   { id: 'backup', label: '导入（简历/备份）', Icon: FileJson },
   { id: 'ai', label: 'AI 助手', Icon: Sparkles },
   { id: 'rules', label: '使用边界', Icon: ShieldCheck },
+  { id: 'guide', label: '使用教程', Icon: BookOpen },
 ] as const;
 
 type PageId = (typeof PAGES)[number]['id'];
@@ -27,6 +30,7 @@ export function App() {
   const { store, commit, saving } = useProfileStore();
   const [page, setPage] = useState<PageId>(pageFromHash);
   const [editingId, setEditingId] = useState('');
+  const [tourAt, setTourAt] = useState<number | null>(null);
 
   useEffect(() => {
     const onHash = () => setPage(pageFromHash());
@@ -43,7 +47,7 @@ export function App() {
         <div style={{ padding: '0 12px 16px' }}><Logo /></div>
         {PAGES.map(({ id, label, Icon }) => (
           <div key={id}>
-            <button className="nav-item" aria-current={page === id ? 'page' : undefined} onClick={() => go(id)}>
+            <button className={`nav-item${id === 'guide' ? ' nav-guide' : ''}`} aria-current={page === id ? 'page' : undefined} onClick={() => go(id)} data-tour={`nav-${id}`}>
               <Icon {...iconProps} /> {label}
             </button>
             {id === 'profile' && page === 'profile' && hasProfile && (
@@ -70,10 +74,12 @@ export function App() {
           <BackupPage store={store} commit={commit} onCreated={(id) => { setEditingId(id); go('profile'); }} />
         ) : page === 'ai' ? (
           <AiPage store={store} commit={commit} />
+        ) : page === 'guide' ? (
+          <GuidePage startTour={setTourAt} />
         ) : (
           <>
             <h1>使用边界</h1>
-            <section className="card">
+            <section className="card" data-tour="rules">
               <ul className="rules small">
                 <li>只填不交：插件不会点击提交、保存或下一步，由你检查后自己提交。</li>
                 <li>宁可不填，不填错：没把握的字段标黄，等你确认。</li>
@@ -87,6 +93,7 @@ export function App() {
           </>
         )}
       </main>
+      {tourAt !== null && <Tour start={tourAt} go={(p) => { if (pageFromHash() !== p) go(p); }} onClose={() => { setTourAt(null); go('guide'); }} />}
     </div>
   );
 }
