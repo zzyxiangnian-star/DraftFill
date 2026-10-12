@@ -1,5 +1,6 @@
 import { Button, Cascader, Checkbox, ConfigProvider, DatePicker, Form, Input, Radio, Select, Typography } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
+import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ETHNICITIES } from '../../../src/lib/profile/options';
 import { cascaderOptions } from './regions';
@@ -10,6 +11,15 @@ const opts = (xs: string[]) => xs.map((x) => ({ label: x, value: x }));
 // 专业带学科代码，测试模糊匹配
 const MAJORS = ['计算机科学与技术(081200)', '计算机技术(085404)', '软件工程(083500)', '电子信息(085400)'];
 const SCHOOLS = ['北京大学', '北京交通大学', '北京理工大学', '清华大学', '武汉大学', '武汉理工大学', '复旦大学', '浙江大学', '南京大学', '中山大学', '四川大学', '山东大学'];
+
+/** 远程搜索的学校框：不输入时没有选项，点了也不弹出，要先打字（真实网申页常见） */
+function RemoteSchool(props: object) {
+  const [list, setList] = useState<string[]>([]);
+  return (
+    <Select {...props} showSearch allowClear filterOption={false} notFoundContent={null} options={opts(list)} placeholder="请输入就读学校"
+      onSearch={(q) => setTimeout(() => setList(q ? SCHOOLS.filter((x) => x.includes(q)) : []), 150)} />
+  );
+}
 
 function App() {
   return (
@@ -29,7 +39,7 @@ function App() {
 
           <Typography.Title level={4}>教育经历</Typography.Title>
           <E path="education[0].degree"><Form.Item label="最高学历" name="topDegree"><Select options={opts(['本科', '硕士', '博士', '其他'])} /></Form.Item></E>
-          <E path="education[0].school"><Form.Item label="毕业院校" name="school"><Select showSearch allowClear options={opts(SCHOOLS)} placeholder="请输入学校名称搜索" /></Form.Item></E>
+          <E path="education[0].school"><Form.Item label="毕业院校" name="school"><RemoteSchool /></Form.Item></E>
           <E path="education[0].major"><Form.Item label="专业" name="major"><Select showSearch allowClear options={opts(MAJORS)} placeholder="请选择专业" /></Form.Item></E>
           <E path="education[0].end"><Form.Item label="毕业时间" name="graduate"><DatePicker picker="month" style={{ width: '100%' }} /></Form.Item></E>
 

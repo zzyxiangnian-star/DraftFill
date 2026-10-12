@@ -299,8 +299,21 @@ async function fillCustomSelect(
   const trigger = ad.trigger(root);
   safeMouseDown(trigger);
   safeClick(trigger);
-  const panel = await waitFor(() => ad.panel(root));
-  if (!panel) return fail('', '下拉框没有打开');
+  const search = root.querySelector<HTMLInputElement>('input');
+  const canType = !!search && !search.readOnly && !search.disabled;
+  let typed = false;
+  let opened = await waitFor(() => ad.panel(root), canType ? 600 : 1500);
+  // 远程搜索的下拉（学校、专业联想）：不输入就没有选项，点了也不展开，先打字再等弹层
+  if (!opened && canType) {
+    const before = search!.value;
+    setNativeValue(search!, query);
+    typed = true;
+    opened = await waitFor(() => ad.panel(root), 2500);
+    // 打字也没弹出选项：把输入框改回原样，不留半截文字
+    if (!opened) { setNativeValue(search!, before); blur(search!); }
+  }
+  const panel = opened;
+  if (!panel) return fail('', typed ? `输入“${query}”后没有出现可选项` : '下拉框没有打开');
 
   // 选项可能是虚拟列表：边滚动边找
   let found: HTMLElement | null = null;
@@ -322,9 +335,8 @@ async function fillCustomSelect(
   }
 
   // 可搜索的下拉（如学校联想）：输入关键字再找
-  const search = root.querySelector<HTMLInputElement>('input');
-  if (!found && search && !search.readOnly) {
-    setNativeValue(search, query);
+  if (!found && canType && !typed) {
+    setNativeValue(search!, query);
     await sleep(300);
     const p2 = ad.panel(root) ?? panel;
     const opts = await waitFor(() => { const o = ad.options(p2); return o.length ? o : null; }, 1500) ?? [];

@@ -155,7 +155,7 @@ describe('真实页面上的填写（静态快照，没有页面脚本）', () =
     expect(by('姓名')).toMatchObject({ status: 'ok', value: '王小明' });
     expect(by('性别')).toMatchObject({ status: 'ok', value: '男' });
     expect(by('学校名称')).toMatchObject({ status: 'ok' });
-    expect(by('学历')).toMatchObject({ status: 'err', note: '下拉框没有打开' });
+    expect(by('学历')).toMatchObject({ status: 'err', note: '输入“硕士研究生”后没有出现可选项' });
     expect(report.items.filter((i) => i.status === 'ok').length).toBeGreaterThanOrEqual(5);
   }, 30_000);
 
