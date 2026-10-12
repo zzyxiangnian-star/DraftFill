@@ -23,6 +23,15 @@ const aiRequests: string[] = [];
 function fakeAnswer(body: string): string {
   const sys: string = JSON.parse(body).messages[0].content;
   if (sys.includes('你是一个分类器')) return '{"skill":"general"}';
+  if (sys.includes('把下面这份简历正文整理成档案')) {
+    return JSON.stringify({
+      education: [{ school: '北京理工大学', major: '计算机科学与技术', degree: '硕士研究生', degreeType: '硕士', start: '2024.09', end: '2027.06' },
+        { school: '华中科技大学', major: '软件工程', degree: '本科', degreeType: '学士', start: '2020.09', end: '2024.06' }],
+      internships: [{ company: '字节跳动科技有限公司', title: '后端开发实习生', department: '抖音电商部', start: '2025.06', end: '2025.09', description: '负责订单服务接口开发，QPS 提升 30%\n参与压测与容量评估' }],
+      projects: [{ name: '校园二手交易平台', role: '后端负责人', start: '2024.10', end: '2025.03', description: '使用 Go + MySQL 搭建交易服务' }],
+      awards: [{ name: '国家奖学金', level: '国家级', date: '2022.10' }, { name: '全国大学生数学建模竞赛省级一等奖', level: '省级', date: '2023.05' }],
+    });
+  }
   if (sys.includes('填表插件没认出来')) {
     // 认字段：把“昵称”认成学校（只为测试流程），其余认不出
     const user: string = JSON.parse(body).messages[1].content;
@@ -155,6 +164,28 @@ test('element：撤销后组件状态清空；没有清空按钮的下拉如实�
   for (const k of ['name', 'gender', 'birth', 'political', 'nation', 'start', 'end', 'rel', 'fname', 'avail', 'native', 'school']) {
     expect(r.values?.[k] ?? '').toBeFalsy();
   }
+});
+
+test('设置页：简历导入后点「用 AI 整理经历」，只发去掉个人信息的正文，基本信息不变', async () => {
+  aiRequests.length = 0;
+  await sw.evaluate((port) => chrome.storage.local.set({ aiSettings: { provider: 'custom', apiKey: 'test-key', model: 'fake', baseUrl: `http://localhost:${port}/v1` } }), PORT);
+  const id = new URL(sw.url()).host;
+  const page = await ctx.newPage();
+  await page.setViewportSize({ width: 1180, height: 1400 });
+  await page.goto(`chrome-extension://${id}/options.html#backup`);
+  await page.locator('input[type=file][accept*=pdf]').setInputFiles(join(ROOT, 'tests/fixtures/resumes/a-classic.pdf'));
+  await expect(page.getByText(/认出了 \d+ 项/)).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: '用 AI 整理经历' }).click();
+  await expect(page.getByText('经历部分是 AI 按简历原文整理的')).toBeVisible();
+  await expect(page.locator('.resume-preview')).toContainText('数学建模');
+  await expect(page.locator('.resume-preview')).toContainText('王小明'); // 基本信息来自本地识别
+  if (process.env.SHOT_RESUME_AI) await page.screenshot({ path: process.env.SHOT_RESUME_AI, fullPage: true });
+  const sent = aiRequests.join('\n');
+  expect(sent).toContain('北京理工大学');
+  for (const x of ['王小明', '138', 'wangxm@example.com']) expect(JSON.parse(aiRequests[0]!).messages[1].content).not.toContain(x);
+  await page.getByRole('button', { name: '取消' }).click();
+  await sw.evaluate(() => chrome.storage.local.remove('aiSettings'));
+  await page.close();
 });
 
 // 简历导入在插件设置页里跑：PDF 用 pdf.js 的 worker，Word 用 mammoth 的浏览器版，都要在 MV3 的安全策略下能用

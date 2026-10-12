@@ -104,7 +104,6 @@ export function parseResume(raw: string): ParsedResume {
   profile.education = [];
   const found: Found[] = [];
   const notes: string[] = [];
-  const add = (group: string, label: string, value: string) => { if (value) found.push({ group, label, value }); };
 
   const text = raw
     // 全角数字、字母和 ＠．－／＋ 转半角；中文标点保持原样
@@ -167,21 +166,9 @@ export function parseResume(raw: string): ParsedResume {
     const l = blockLines('intention').find((x) => !/[:：]/.test(x));
     if (l) intention.positions = l;
   }
-  add('基本信息', '姓名', b.name);
-  add('基本信息', '性别', b.gender);
-  add('基本信息', '出生日期', b.birthDate);
-  add('基本信息', '民族', b.ethnicity);
-  add('基本信息', '政治面貌', b.politicalStatus);
-  add('基本信息', '籍贯', b.nativePlace);
-  add('基本信息', '现居城市', b.currentCity);
-  add('基本信息', '手机', b.phone);
-  add('基本信息', '邮箱', b.email);
-  add('求职意向', '意向岗位', intention.positions);
-  add('求职意向', '期望城市', intention.cities);
-  add('求职意向', '期望薪资', intention.salary);
 
   // 3. 经历类：按起止时间切成条
-  for (const [i, e] of entries(blockLines('education')).entries()) {
+  for (const e of entries(blockLines('education'))) {
     const ed = emptyEducation();
     ed.start = e.start; ed.end = e.end;
     const toks = e.head.flatMap(tokens).filter((t) => !RANGE.test(t));
@@ -203,10 +190,6 @@ export function parseResume(raw: string): ParsedResume {
     if (courses) ed.courses = courses[1]!.trim();
     if (!ed.school && !ed.major) continue;
     profile.education.push(ed);
-    const g = `教育经历 ${i + 1}`;
-    add(g, '学校', ed.school); add(g, '学院', ed.college); add(g, '专业', ed.major); add(g, '学历', ed.degree);
-    add(g, '时间', span(ed.start, ed.end)); add(g, 'GPA', ed.gpa && `${ed.gpa}${ed.gpaScale ? ` / ${ed.gpaScale}` : ''}`);
-    add(g, '排名', ed.rank && `${ed.rank}${ed.rankTotal ? ` / ${ed.rankTotal}` : ''}`);
   }
   // 学历从高到低：网申的“最高学历”取第一条
   const rankOf = (d: string) => ['博士研究生', '硕士研究生', '本科', '大专'].indexOf(d);
@@ -223,9 +206,6 @@ export function parseResume(raw: string): ParsedResume {
     it.description = e.body.map(stripBullet).join('\n');
     if (!it.company) continue;
     profile.internships.push(it);
-    const g = `实习经历 ${profile.internships.length}`;
-    add(g, '公司', it.company); add(g, '职位', it.title); add(g, '部门', it.department); add(g, '时间', span(it.start, it.end));
-    add(g, '内容', short(it.description));
   }
 
   for (const e of entries(blockLines('project'))) {
@@ -238,8 +218,6 @@ export function parseResume(raw: string): ParsedResume {
     p.description = e.body.map(stripBullet).join('\n');
     if (!p.name) continue;
     profile.projects.push(p);
-    const g = `项目经历 ${profile.projects.length}`;
-    add(g, '名称', p.name); add(g, '角色', p.role); add(g, '时间', span(p.start, p.end)); add(g, '描述', short(p.description));
   }
 
   for (const e of entries(blockLines('campus'))) {
@@ -251,8 +229,6 @@ export function parseResume(raw: string): ParsedResume {
     c.description = e.body.map(stripBullet).join('\n');
     if (!c.organization) continue;
     profile.campus.push(c);
-    const g = `校园经历 ${profile.campus.length}`;
-    add(g, '组织', c.organization); add(g, '职务', c.role); add(g, '时间', span(c.start, c.end));
   }
 
   // 4. 获奖：一行可能有几项，用逗号、顿号、分号隔开
@@ -265,7 +241,6 @@ export function parseResume(raw: string): ParsedResume {
       a.name = name; a.date = date;
       a.level = LEVEL.exec(name)?.[1] ?? (/国家|全国/.test(name) ? '国家级' : /省/.test(name) ? '省级' : /校/.test(name) ? '校级' : '');
       profile.awards.push(a);
-      add('获奖', `第 ${profile.awards.length} 项`, [a.name, a.date].filter(Boolean).join('，'));
     }
   }
 
@@ -296,18 +271,61 @@ export function parseResume(raw: string): ParsedResume {
     const c = emptyCertificate(); c.name = name; sk.certificates.push(c);
   }
   sk.summary = skillLines.map(stripBullet).join('\n');
+
+  found.push(...describeProfile(profile));
+  if (!profile.education.length) { profile.education = [emptyEducation()]; notes.push('没认出教育经历，导入后请在档案里补上。'); }
+  if (!b.name) notes.push('没认出姓名。');
+  if (!blocks.some((x) => x.kind !== 'head')) notes.push('没找到“教育背景”“实习经历”这类标题，可能是排版比较特别，认出的内容会比较少。');
+  if (b.name) profile.title = `${b.name}的简历`;
+  return { profile, found, notes };
+}
+
+/** 预览里逐项列出档案内容（本地识别和 AI 整理共用） */
+export function describeProfile(profile: Profile): Found[] {
+  const found: Found[] = [];
+  const add = (group: string, label: string, value: string) => { if (value) found.push({ group, label, value }); };
+  const b = profile.basic;
+  const intention = profile.intention;
+  add('基本信息', '姓名', b.name);
+  add('基本信息', '性别', b.gender);
+  add('基本信息', '出生日期', b.birthDate);
+  add('基本信息', '民族', b.ethnicity);
+  add('基本信息', '政治面貌', b.politicalStatus);
+  add('基本信息', '籍贯', b.nativePlace);
+  add('基本信息', '现居城市', b.currentCity);
+  add('基本信息', '手机', b.phone);
+  add('基本信息', '邮箱', b.email);
+  add('求职意向', '意向岗位', intention.positions);
+  add('求职意向', '期望城市', intention.cities);
+  add('求职意向', '期望薪资', intention.salary);
+  profile.education.forEach((ed, i) => {
+    const g = `教育经历 ${i + 1}`;
+    add(g, '学校', ed.school); add(g, '学院', ed.college); add(g, '专业', ed.major); add(g, '学历', ed.degree);
+    add(g, '时间', span(ed.start, ed.end)); add(g, 'GPA', ed.gpa && `${ed.gpa}${ed.gpaScale ? ` / ${ed.gpaScale}` : ''}`);
+    add(g, '排名', ed.rank && `${ed.rank}${ed.rankTotal ? ` / ${ed.rankTotal}` : ''}`);
+  });
+  profile.internships.forEach((it, i) => {
+    const g = `实习经历 ${i + 1}`;
+    add(g, '公司', it.company); add(g, '职位', it.title); add(g, '部门', it.department); add(g, '时间', span(it.start, it.end));
+    add(g, '内容', short(it.description));
+  });
+  profile.projects.forEach((p, i) => {
+    const g = `项目经历 ${i + 1}`;
+    add(g, '名称', p.name); add(g, '角色', p.role); add(g, '时间', span(p.start, p.end)); add(g, '描述', short(p.description));
+  });
+  profile.campus.forEach((c, i) => {
+    const g = `校园经历 ${i + 1}`;
+    add(g, '组织', c.organization); add(g, '职务', c.role); add(g, '时间', span(c.start, c.end));
+  });
+  profile.awards.forEach((a, i) => add('获奖', `第 ${i + 1} 项`, [a.name, a.date].filter(Boolean).join('，')));
+  const sk = profile.skills;
   add('技能与证书', '英语四级', sk.cet4);
   add('技能与证书', '英语六级', sk.cet6);
   add('技能与证书', '计算机等级', sk.computerLevel);
   sk.languages.forEach((l) => add('技能与证书', l.language, l.level));
   sk.certificates.forEach((c, i) => add('技能与证书', `证书 ${i + 1}`, c.name));
   add('技能与证书', '技能描述', short(sk.summary));
-
-  if (!profile.education.length) { profile.education = [emptyEducation()]; notes.push('没认出教育经历，导入后请在档案里补上。'); }
-  if (!b.name) notes.push('没认出姓名。');
-  if (!blocks.some((x) => x.kind !== 'head')) notes.push('没找到“教育背景”“实习经历”这类标题，可能是排版比较特别，认出的内容会比较少。');
-  if (b.name) profile.title = `${b.name}的简历`;
-  return { profile, found, notes };
+  return found;
 }
 
 const CITIES = /北京|上海|广州|深圳|杭州|南京|成都|武汉|西安|苏州|天津|重庆|长沙|厦门|青岛|合肥|郑州|济南|宁波|无锡|大连|沈阳|福州|东莞|珠海|佛山|昆明|哈尔滨|长春|南昌|贵阳|南宁|太原|石家庄|香港|澳门|台北/;
