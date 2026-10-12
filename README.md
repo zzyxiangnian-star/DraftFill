@@ -132,12 +132,20 @@ DraftFill 的思路是：**认得准的帮你填，认不准的宁可不填，�
 
 > 目前还没有上架应用商店，需要手动加载，一分钟就好。
 
-1. 到 [Releases](../../releases) 下载最新的 `DraftFill.zip`，解压。
-2. 浏览器地址栏打开 `chrome://extensions`（Edge 是 `edge://extensions`），打开右上角「开发者模式」。
-3. 点「加载已解压的扩展程序」，选择解压出来的文件夹。
+**[⬇ 下载 DraftFill.zip](https://github.com/zzyxiangnian-star/DraftFill/raw/main/release/DraftFill.zip)**（Chrome、Edge 通用，压缩包里附了一张安装使用教程图）
+
+1. 解压，得到 `DraftFill` 文件夹，放在一个不会被删的位置。
+2. 浏览器地址栏打开 `chrome://extensions`（Edge 是 `edge://extensions`），打开「开发者模式」。
+3. 点「加载已解压的扩展程序」，选择 `DraftFill` 文件夹。
 4. 点工具栏的拼图图标，把「网申助手 DraftFill」固定出来。
 
 装好后会自动打开使用教程。
+
+<details>
+<summary><b>安装使用教程卡片（可以直接转发给同学）</b></summary>
+<br>
+<p align="center"><img src="docs/install-card.png" width="540" alt="安装使用教程卡片"></p>
+</details>
 
 ## 怎么用
 
