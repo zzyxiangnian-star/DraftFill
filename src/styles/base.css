@@ -126,3 +126,72 @@ input[type="month"].input, input[type="date"].input { font-variant-numeric: tabu
 @media (prefers-reduced-motion: reduce) { .report-list .status { animation-name: fade; } }
 .status-btn { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
 .status-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* 下拉框：Chrome / Edge 135 起可以自定义弹出列表（customizable select），圆角卡片 + 圆角选项；旧浏览器照常用系统样式 */
+@supports (appearance: base-select) {
+  select.select, select.profile-select { appearance: base-select; display: inline-flex; align-items: center; }
+  select.select:has(option[value=""]:checked) { color: var(--text-subtle); }
+  select.select::picker-icon, select.profile-select::picker-icon { display: none; }
+  select.select::picker(select), select.profile-select::picker(select) {
+    appearance: base-select; margin-block: 6px; padding: 6px; min-width: anchor-size(width); max-height: min(320px, 60vh);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
+    box-shadow: var(--shadow-pop); font: inherit; font-size: var(--fs-body);
+    opacity: 1; transform: none;
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), overlay var(--dur-fast) allow-discrete, display var(--dur-fast) allow-discrete;
+  }
+  select.select:not(:open)::picker(select), select.profile-select:not(:open)::picker(select) { opacity: 0; transform: translateY(-4px); }
+  @starting-style { select.select:open::picker(select), select.profile-select:open::picker(select) { opacity: 0; transform: translateY(-4px); } }
+  select.select option, select.profile-select option {
+    display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border-radius: var(--radius-xs);
+    color: var(--text); font-weight: 400; cursor: pointer; transition: background var(--dur-fast) var(--ease);
+  }
+  select.select option::checkmark, select.profile-select option::checkmark { order: 1; margin-left: auto; color: var(--brand); content: "✓"; }
+  select.select option:hover, select.select option:focus-visible,
+  select.profile-select option:hover, select.profile-select option:focus-visible { background: var(--surface-muted); outline: none; }
+  select.select option:checked, select.profile-select option:checked { color: var(--brand); font-weight: 500; background: var(--brand-soft); }
+  select.select option[value=""] { color: var(--text-subtle); font-weight: 400; }
+  select.select option[value=""]:checked { background: none; }
+  select.select option[value=""]::checkmark { content: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  select.select::picker(select), select.profile-select::picker(select) { transition: none; }
+}
+
+/* 日期选择器（src/components/DatePicker.tsx） */
+.date-picker { position: relative; min-width: 0; }
+.date-field { padding-right: 36px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.date-icon { position: absolute; right: 12px; top: 12px; color: var(--text-subtle); pointer-events: none; }
+.date-panel { position: absolute; z-index: 60; top: -8px; left: -8px; width: 300px; max-width: calc(100vw - 16px); box-sizing: border-box;
+  padding: 8px 12px 6px; display: grid; gap: 4px; background: var(--surface); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-pop); animation: date-in var(--dur-fast) var(--ease-enter); }
+.date-panel.to-left { left: auto; right: -8px; }
+.date-panel.to-up { top: auto; bottom: -8px; }
+@keyframes date-in { from { opacity: 0; transform: translateY(-4px); } }
+.date-panel-input { height: 38px; font-variant-numeric: tabular-nums; }
+.date-panel-input[aria-invalid="true"] { border-color: var(--warning); }
+.date-head { display: flex; align-items: center; gap: 2px; height: 40px; border-bottom: 1px solid var(--border-soft); margin-bottom: 2px; }
+.date-nav { width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: none; color: var(--text-subtle);
+  border-radius: var(--radius-xs); cursor: pointer; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.date-nav:hover { background: var(--surface-muted); color: var(--text); }
+.date-title { flex: 1; display: flex; justify-content: center; gap: 4px; font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
+.date-title button { border: 0; background: none; font: inherit; color: inherit; padding: 2px 6px; border-radius: var(--radius-xs); cursor: pointer; }
+.date-title button:hover { color: var(--brand); background: var(--brand-soft); }
+.date-grid { display: grid; }
+.date-days { grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.date-months { grid-template-columns: repeat(3, 1fr); gap: 8px 4px; padding: 10px 0; }
+.date-week { height: 32px; display: grid; place-items: center; font-size: var(--fs-small); color: var(--text-muted); }
+.date-cell { height: 36px; min-width: 36px; justify-self: center; display: grid; place-items: center; border: 0; background: none;
+  border-radius: var(--radius-pill); font: inherit; font-size: var(--fs-body); color: var(--text); font-variant-numeric: tabular-nums;
+  cursor: pointer; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.date-days .date-cell { width: 36px; }
+.date-months .date-cell { width: 72px; }
+.date-cell:hover { background: var(--surface-muted); }
+.date-cell.is-outside { color: var(--text-subtle); opacity: .6; }
+.date-cell.is-today { box-shadow: inset 0 0 0 1px var(--brand); }
+.date-cell.is-selected { background: var(--brand); color: var(--text-on-strong); box-shadow: none; opacity: 1; font-weight: 500; }
+.date-cell:focus-visible, .date-nav:focus-visible, .date-title button:focus-visible, .date-link:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.date-foot { display: flex; justify-content: center; gap: var(--space-4); border-top: 1px solid var(--border-soft); padding-top: 6px; }
+.date-link { border: 0; background: none; font: inherit; font-size: var(--fs-small); color: var(--brand); padding: 6px 8px; border-radius: var(--radius-xs); cursor: pointer; }
+.date-link:hover { background: var(--brand-soft); }
+.date-clear { color: var(--text-subtle); }
+@media (prefers-reduced-motion: reduce) { .date-panel { animation: none; } }

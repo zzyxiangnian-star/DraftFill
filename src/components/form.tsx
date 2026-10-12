@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useId, type ReactNode } from 'react';
 import { iconProps } from './icon';
+import { DatePicker } from './DatePicker';
 
 export function Field({ label, hint, error, wide, children }: {
   label: string; hint?: ReactNode; error?: string | null; wide?: boolean; children: (id: string) => ReactNode;
@@ -23,7 +24,9 @@ export function Text({ label, hint, error, wide, placeholder, type = 'text', inp
 }) {
   return (
     <Field label={label} hint={hint} error={error} wide={wide}>
-      {(id) => (
+      {(id) => type === 'date' || type === 'month' ? (
+        <DatePicker id={id} mode={type} value={bind.value} onChange={bind.onChange} invalid={!!error} placeholder={placeholder} />
+      ) : (
         <input id={id} className={`input${error ? ' input-invalid' : ''}`} type={type} inputMode={inputMode}
           placeholder={placeholder} value={bind.value} aria-invalid={!!error} onChange={(e) => bind.onChange(e.target.value)} />
       )}
