@@ -382,6 +382,47 @@ test('候选卡：没填的字段点进去，从档案里选一项填上；记�
   await again.close();
 });
 
+test('悬浮按钮：点过插件后出现在右下角，点一下填写；按网站开启后一打开页面就有；不提交', async () => {
+  const url = `http://localhost:${PORT}/native.html`;
+  const page = await ctx.newPage();
+  await page.goto(url);
+  const fab = page.locator('#wangshen-fab');
+  await expect(fab).toHaveCount(0); // 没点过插件、也没开启的网站：页面上什么都没有
+  await sw.evaluate(async (u) => {
+    const [tab] = await chrome.tabs.query({ url: u });
+    await chrome.scripting.executeScript({ target: { tabId: tab!.id! }, files: ['/content-scripts/content.js'] });
+  }, url);
+  await expect(fab.getByRole('button', { name: '一键填充' })).toBeVisible();
+  await fab.getByRole('button', { name: '一键填充' }).click();
+  await expect(fab.getByRole('status')).toContainText('已填');
+  await expect(fab.getByRole('button', { name: '再填一次' })).toBeVisible();
+  expect(await page.inputValue('#xm')).toBe('王小明');
+  const last = await sw.evaluate(async () => (await chrome.storage.local.get('lastReport')).lastReport);
+  expect(last.url).toBe(url);
+  await fab.getByRole('button', { name: '更多操作' }).click();
+  await expect(fab.getByRole('menuitem', { name: /AI 帮我填完/ })).toBeVisible();
+  if (process.env.SHOT_FAB) await page.screenshot({ path: process.env.SHOT_FAB });
+  await fab.getByRole('menuitem', { name: '撤销本次填写' }).click();
+  await expect(fab.getByRole('status')).toContainText('已恢复');
+  expect(await page.inputValue('#xm')).toBe('');
+  await fab.getByRole('button', { name: '更多操作' }).click();
+  await fab.getByRole('menuitem', { name: '这个页面先隐藏' }).click();
+  await expect(fab).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { __submitted?: boolean }).__submitted ?? false)).toBe(false);
+  await page.close();
+
+  // 在弹窗里开启了这个网站（测试里权限已经给了）：打开页面就有按钮，但不会自己填
+  await sw.evaluate((p) => chrome.storage.local.set({ fabSites: [`http://localhost:${p}/*`] }), PORT);
+  await expect.poll(() => sw.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts()).map((s: { id: string }) => s.id))).toEqual(['wangshen-fab']);
+  const again = await ctx.newPage();
+  await again.goto(url);
+  await expect(again.locator('#wangshen-fab').getByRole('button', { name: '一键填充' })).toBeVisible();
+  expect(await again.inputValue('#xm')).toBe('');
+  await sw.evaluate(() => chrome.storage.local.set({ fabSites: [] }));
+  await expect.poll(() => sw.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts()).length)).toBe(0);
+  await again.close();
+});
+
 test('AI 认字段：侧边栏点一下，只发字段名；认出的标黄并按网站记住', async () => {
   aiRequests.length = 0;
   await sw.evaluate((port) => chrome.storage.local.set({ aiSettings: { provider: 'custom', apiKey: 'test-key', model: 'fake', baseUrl: `http://localhost:${port}/v1` } }), PORT);

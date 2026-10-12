@@ -82,19 +82,22 @@ export function AiGuess({ count }: { count: number }) {
     }
   }
 
-  // 弹窗里点了「AI 帮我填完」：侧边栏打开后自动开始
+  // 弹窗或悬浮按钮里点了「AI 帮我填完」：侧边栏打开后自动开始
+  // 侧边栏本来就开着时，页面上的悬浮按钮点了也要接着跑
   useEffect(() => {
-    aiAutoRunItem.getValue().then((at) => {
-      if (at && Date.now() - at < 60_000 && count > 0) { aiAutoRunItem.setValue(null); run(); }
-    });
+    const start = (at: number | null) => {
+      if (at && Date.now() - at < 60_000 && !busy) { aiAutoRunItem.setValue(null); run(); }
+    };
+    aiAutoRunItem.getValue().then(start);
+    return aiAutoRunItem.watch(start);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [count, busy]);
 
-  if (!count && !notice) return null;
+  // 按钮一直在，用不用由你决定（再跑一次也行：已经填好的不会动）
   return (
     <section className="card stack" style={{ gap: 'var(--space-3)' }}>
-      {count > 0 && !done && <>
-      <p style={{ margin: 0 }}>还有 {count} 个字段没填上，可以让 AI 接着填：认字段、点日期面板、回答档案里没有的问题。</p>
+      {<>
+      <p style={{ margin: 0 }}>{count > 0 ? `还有 ${count} 个字段没填上，` : done ? 'AI 已经帮你过了一遍，' : '规则填不上的，'}可以让 AI 接着填：认字段、点日期面板、回答档案里没有的问题。</p>
       <p className="small muted" style={{ margin: 0 }}>只发字段名、选项、面板上的按钮文字和去掉姓名电话的简历，不截图、不发你已经填好的内容。AI 填的都会标黄，请核对。</p>
       <div><button className="btn btn-primary" onClick={run} disabled={!!busy}><Sparkles {...iconProps} /> {busy ?? 'AI 帮我填完'}</button></div>
       </>}

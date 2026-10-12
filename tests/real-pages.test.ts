@@ -17,6 +17,7 @@ describe.each([
   ['beisen-zhuanzhuan.html', '北森 · 转转'],
   ['hotjob-crpower.html', 'Wecruit · 华润电力'],
   ['feishu-moonton.html', '飞书招聘 · 沐瞳科技'],
+  ['feishu-xpeng.html', '飞书招聘新版 · 小鹏'],
 ])('%s', (file, name) => {
   it(`${name}：没有错认、不该填的不碰，识别率 ≥ 90%`, () => {
     load(file);
@@ -170,4 +171,52 @@ describe('真实页面上的填写（静态快照，没有页面脚本）', () =
     const inputs = [...document.querySelectorAll<HTMLInputElement>('input[placeholder="英文名"], input[readonly]')];
     expect(inputs.every((i) => i.value === '')).toBe(true);
   }, 60_000);
+});
+
+describe('飞书招聘新版（UD 组件库，小鹏）', () => {
+  it('字段名、分区、必填都认出；推荐方式是一组单选；学历、起止时间列为要自己点选的', () => {
+    load('feishu-xpeng.html');
+    const cs = detectControls(document);
+    const by = (label: string) => cs.filter((c) => describeControl(c) === label);
+    expect(cs.filter((c) => describeControl(c) === '未命名字段')).toEqual([]);
+    expect(by('推荐方式')).toHaveLength(1);
+    expect(by('推荐方式')[0]!.options).toEqual(['无', '内推', '大使推荐']);
+    expect(by('学历')[0]!.kind).toBe('readonly');
+    expect(by('起止时间').map((c) => [c.kind, c.section])).toEqual([['readonly', 'education'], ['readonly', 'internship'], ['readonly', 'project']]);
+    expect(by('公司名称')[0]).toMatchObject({ section: 'internship', required: true });
+    expect(by('项目角色')[0]!.required).toBe(false);
+  });
+});
+
+describe('腾讯校招的写法（按 2026-10-12 的页面结构自制，不含真实信息）', () => {
+  const PAGE = `
+    <ul>
+      <li class="send_box"><div class="send_title"><span>基础信息</span></div><div class="send_content"><div class="info_list">
+        <div class="info_box"><div class="subtitle must">姓名<span>*</span></div><div class="input_box"><div class="el-input"><input type="text" class="el-input__inner" placeholder="请输入姓名"></div></div></div>
+        <div class="info_box"><div class="subtitleBold">证件信息</div><div class="subtitle must">手机号码<span>*</span></div><div class="input_box"><div class="el-input"><input type="text" class="el-input__inner"></div></div></div>
+      </div></div></li>
+      <li class="send_box"><div class="send_title"><span>教育经历</span></div><div class="send_content"><div class="info_list">
+        <div class="info_box"><div class="subtitle">GPA-GPA</div><div class="input_box"><input type="text"></div></div>
+        <div class="info_box"><div class="subtitle">GPA-BASE</div><div class="input_box"><input type="text"></div></div>
+      </div></div></li>
+      <li class="send_box"><div class="send_title"><span>获奖情况</span></div><div class="send_content"><div class="info_list">
+        <div class="info_box"><div class="subtitle">奖项说明</div><textarea></textarea></div>
+      </div></div></li>
+      <li class="send_box"><div class="send_title"><span>语言能力</span></div><div class="send_content"><div class="info_list">
+        <div class="info_box"><div class="subtitle">开发语言</div><div class="input_box"><input type="text"></div></div>
+      </div></div></li>
+    </ul>`;
+  it('字段名取 subtitle，分区取 send_title；开发语言不当外语，GPA 基数、奖项说明不填错', () => {
+    document.body.innerHTML = PAGE;
+    const plan = planFill(document, sampleProfile());
+    const got = Object.fromEntries(plan.map((f) => [describeControl(f.control), [f.control.section, f.path]]));
+    expect(got).toEqual({
+      姓名: ['basic', 'basic.name'],
+      手机号码: ['basic', 'basic.phone'],
+      'GPA-GPA': ['education', 'education[].gpa'],
+      'GPA-BASE': ['education', 'education[].gpaScale'],
+      奖项说明: ['award', 'awards[].description'],
+      开发语言: ['language', null],
+    });
+  });
 });

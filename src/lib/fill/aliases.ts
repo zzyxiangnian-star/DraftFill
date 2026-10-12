@@ -76,8 +76,8 @@ export const ALIASES: Alias[] = [
   { path: 'education[].start', strong: ['入学时间', '入学日期', '入学年月'], ctx: ['开始时间', '起始时间', '开始日期', '起始日期'], home: EDU,
     range: ['就读时间', '在校时间', '就读起止时间', '在读时间', '起止时间', '学习时间'] },
   { path: 'education[].end', strong: ['毕业时间', '毕业日期', '毕业年月', '预计毕业时间'], ctx: ['结束时间', '截止时间', '结束日期'], home: EDU },
-  { path: 'education[].gpa', strong: ['gpa', '绩点', '平均绩点', '平均学分绩点', '学分绩点', 'gpa成绩'], home: EDU, exclude: ['满分', '总分', '排名', '证明'], keys: [['gpa']] },
-  { path: 'education[].gpaScale', strong: ['gpa满分', '绩点满分', '满分', 'gpa总分'], home: EDU },
+  { path: 'education[].gpa', strong: ['gpa', '绩点', '平均绩点', '平均学分绩点', '学分绩点', 'gpa成绩'], home: EDU, exclude: ['满分', '总分', '排名', '证明', 'base', '基数'], keys: [['gpa']] },
+  { path: 'education[].gpaScale', strong: ['gpa满分', '绩点满分', '满分', 'gpa总分', 'gpa-base', 'gpabase'], home: EDU },
   { path: 'education[].rank', strong: ['专业排名', '成绩排名', '年级排名', '班级排名', '排名'], home: EDU, exclude: ['人数', '总'] },
   { path: 'education[].rankTotal', strong: ['专业总人数', '排名总人数', '总人数', '专业人数', '年级人数'], home: EDU },
   { path: 'education[].courses', strong: ['主修课程', '主要课程', '核心课程', '专业课程'], home: EDU },
@@ -111,17 +111,17 @@ export const ALIASES: Alias[] = [
   { path: 'campus[].description', strong: [], ctx: ['经历描述', '描述', '工作内容', '内容'], home: CAMPUS },
 
   // 获奖
-  { path: 'awards[].name', strong: ['奖项名称', '获奖名称', '奖励名称', '荣誉名称'], ctx: ['奖项', '名称'], home: ['award'] },
+  { path: 'awards[].name', strong: ['奖项名称', '获奖名称', '奖励名称', '荣誉名称'], ctx: ['奖项', '名称'], home: ['award'], exclude: ['说明', '描述', '介绍', '类型'] },
   { path: 'awards[].level', strong: ['获奖级别', '奖项级别', '奖励级别'], ctx: ['级别'], home: ['award'] },
   { path: 'awards[].date', strong: ['获奖时间', '获奖日期'], ctx: ['获得时间', '颁发时间', '时间', '日期'], home: ['award'] },
-  { path: 'awards[].description', strong: ['获奖描述'], ctx: ['说明', '描述'], home: ['award'] },
+  { path: 'awards[].description', strong: ['获奖描述', '奖项说明', '获奖说明', '奖项描述'], ctx: ['说明', '描述'], home: ['award'] },
 
   // 语言与证书
   { path: 'skills.cet4', strong: ['英语四级', 'cet4', 'cet-4', '大学英语四级', '四级成绩', '四级'], home: ['language', 'skill', 'certificate', 'basic'], exclude: ['六级'] },
   { path: 'skills.cet6', strong: ['英语六级', 'cet6', 'cet-6', '大学英语六级', '六级成绩', '六级'], home: ['language', 'skill', 'certificate', 'basic'], exclude: ['四级'] },
   { path: 'skills.computerLevel', strong: ['计算机等级', '计算机水平', '计算机能力', '计算机等级证书'], home: ['skill', 'certificate', 'basic'] },
   { path: 'skills.summary', strong: ['专业技能', '技能特长', '个人技能', '技能描述'], ctx: ['技能', '特长'], home: ['skill'] },
-  { path: 'skills.languages[].language', strong: ['外语语种'], ctx: ['语种', '语言'], home: ['language'] },
+  { path: 'skills.languages[].language', strong: ['外语语种'], ctx: ['语种', '语言'], home: ['language'], exclude: ['开发', '编程', '程序'] },
   { path: 'skills.languages[].level', strong: ['外语水平', '语言等级'], ctx: ['等级', '掌握程度', '熟练程度', '水平', '成绩'], home: ['language'],
     exclude: ['测试', '证明'] },
   { path: 'skills.certificates[].name', strong: ['证书名称'], ctx: ['证书', '名称'], home: ['certificate'] },

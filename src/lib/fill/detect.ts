@@ -44,7 +44,10 @@ const PHOENIX_SELECT = '.phoenix-select';
 const DIV_RADIO = '.phoenix-radio-group';
 /** 飞书招聘的“年-月 至 年-月”面板，只能点开选 */
 const PERIOD_PICKER = '.atsx-date-picker';
-const FORM_ITEM = '.ant-form-item, .el-form-item, .form-item, .form-group, [class*="form-item"], [class*="formItem"], [class*="FormItem"], [class*="field-item"], [class*="apply-field"], .field, dl, tr, li';
+/** 飞书招聘新版（UD 组件库，小鹏）：起止时间是两个框的日期面板，下拉框只能点选 */
+const UD_DATE_RANGE = '.throne-biz-date-range-picker-wrapper';
+const UD_SELECT = '.ud__select';
+const FORM_ITEM = '.ant-form-item, .el-form-item, .form-item, .form-group, [class*="form-item"], .ud-formily-item, [class*="formItem"], [class*="FormItem"], [class*="field-item"], [class*="apply-field"], .field, dl, tr, li';
 /** 只读输入框里像“要点开面板选”的：日期、省市区等 */
 const PICKER_HINT = /选择|日期|时间|年|月|省|市|区|地/;
 const LABELISH = '.ant-form-item-label, .el-form-item__label, label, [class*="label"], [class*="Label"], th, dt, [class*="title"]';
@@ -117,6 +120,15 @@ function labelOf(anchor: HTMLElement, input: HTMLElement | null, isGroup: boolea
     const t = short(lead);
     if (t) return t;
   }
+  // 腾讯校招：info_box 里的 subtitle 是字段名（前面可能还有“证件信息”这种小标题）
+  const sub = anchor.closest('.info_box')?.querySelector(':scope > .subtitle');
+  if (sub && !sub.contains(target)) {
+    const t = short(textOf(sub, MAX_LABEL + 5));
+    if (t) return t;
+  }
+  // 飞书招聘新版：字段容器上直接写着字段名
+  const named = target.closest('[data-form-field-i18n-name]')?.getAttribute('data-form-field-i18n-name');
+  if (named && short(named)) return short(named);
   // 3. 表格：左边的单元格
   const cell = anchor.closest('td');
   if (cell) {
@@ -216,7 +228,7 @@ function isRequired(el: HTMLElement, input: HTMLElement | null, label: string, p
 function labelRequired(el: HTMLElement): boolean {
   let n: Element | null = el.parentElement;
   for (let depth = 0; n && depth < 8 && !n.matches('form, body'); n = n.parentElement, depth++) {
-    const head = [...n.children].find((c) => /(^|\s)[\w-]*form-item-label(\s|$)/.test(c.className));
+    const head = [...n.children].find((c) => /(^|\s)[\w-]*form(ily)?-item-label(\s|$)/.test(c.className));
     if (head) return !!head.querySelector('[class*="required" i]') || /(^|\s)[\w-]*required/i.test(head.className);
   }
   return false;
@@ -273,7 +285,7 @@ function detectIn(doc: FormRoot): Control[] {
   };
 
   // 自定义组件：先认出根节点，它们内部的原生 input 不再单独算
-  const roots = `${CASCADER}, ${CUSTOM_SELECT}, ${PICKER}, ${MOKA_SELECT}, ${PHOENIX_SELECT}, ${DIV_RADIO}, ${PERIOD_PICKER}`;
+  const roots = `${CASCADER}, ${CUSTOM_SELECT}, ${PICKER}, ${MOKA_SELECT}, ${PHOENIX_SELECT}, ${DIV_RADIO}, ${PERIOD_PICKER}, ${UD_DATE_RANGE}, ${UD_SELECT}`;
   for (const root of doc.querySelectorAll<HTMLElement>(roots)) {
     if (!isVisible(root) || [...consumed].some((c) => c.contains(root))) continue;
     const input = root.querySelector<HTMLInputElement>('input');
@@ -286,8 +298,10 @@ function detectIn(doc: FormRoot): Control[] {
       push('div-radio', root, null, { items, options: items.map((i) => textOf(i.querySelector('.phoenix-radio__radio-text') ?? i)) });
       continue;
     }
+    // UD 下拉里能打字的（学校名称）当普通输入框填；只能点选的列出来让用户选
+    if (root.matches(UD_SELECT) && input && !input.readOnly) continue;
     consumed.add(root);
-    if (root.matches(PERIOD_PICKER)) push('readonly', root, null);
+    if (root.matches(`${PERIOD_PICKER}, ${UD_DATE_RANGE}, ${UD_SELECT}`)) push('readonly', root, null);
     else if (root.matches(CASCADER)) push('cascader', root, input);
     else if (root.matches('.ant-picker')) push('antd-picker', root, input);
     else if (root.matches('.el-date-editor')) push('el-picker', root, input);
@@ -312,7 +326,7 @@ function detectIn(doc: FormRoot): Control[] {
 
     if (kind === 'radio') {
       const r = el as HTMLInputElement;
-      const group = r.closest<HTMLElement>('[role=radiogroup], .ant-radio-group, .el-radio-group, [class*="-radio-group"]');
+      const group = r.closest<HTMLElement>('[role=radiogroup], .ant-radio-group, .el-radio-group, .ud__radio-group, [class*="-radio-group"]');
       const key: string | Element = group ?? (r.name ? `name:${r.name}` : r);
       if (seenRadio.has(key)) continue;
       seenRadio.add(key);
@@ -336,7 +350,25 @@ function detectIn(doc: FormRoot): Control[] {
   // 按文档顺序排列
   out.sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
   markLevels(out);
+  markRanges(out);
   return out;
+}
+
+const DATE_KINDS = new Set<ControlKind>(['el-picker', 'antd-picker']);
+
+/** 一个字段里并排的两个日期框（腾讯“起止时间”：开始 — 结束）：前一个是开始，后一个是结束 */
+function markRanges(controls: Control[]) {
+  const groups = new Map<Element, Control[]>();
+  for (const c of controls) {
+    if (!DATE_KINDS.has(c.kind) || c.range) continue;
+    const box = c.el.closest('.info_box') ?? c.el.parentElement?.closest(FORM_ITEM);
+    if (box) groups.set(box, [...(groups.get(box) ?? []), c]);
+  }
+  for (const g of groups.values()) {
+    if (g.length !== 2 || describe(g[0]!) !== describe(g[1]!)) continue;
+    g[0]!.range = 'start';
+    g[1]!.range = 'end';
+  }
 }
 
 const LEVEL_KINDS = new Set<ControlKind>(['antd-select', 'el-select', 'moka-select', 'phoenix-select', 'select']);
@@ -362,7 +394,7 @@ function markLevels(controls: Control[]) {
 function fieldItem(el: HTMLElement): Element | null {
   let n: Element | null = el.parentElement;
   for (let depth = 0; n && depth < 8 && !n.matches('form, body'); n = n.parentElement, depth++) {
-    if ([...n.children].some((c) => /(^|\s)[\w-]*(form-item-label|form-item__label)(\s|$)/.test(c.className))) return n;
+    if ([...n.children].some((c) => /(^|\s)[\w-]*(form-item-label|formily-item-label|form-item__label)(\s|$)/.test(c.className))) return n;
   }
   return null;
 }

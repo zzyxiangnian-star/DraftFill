@@ -1,4 +1,5 @@
 import { lastReportItem } from '@/src/lib/fill/reportStore';
+import { FAB_SCRIPT_ID, fabSitesItem } from '@/src/lib/content/fabSites';
 import { applicationStoreItem, dueSoon } from '@/src/lib/tracker/applications';
 import type { AiApplyResult, AiFieldsResult, AiQuestionsResult, AiWidgetsResult, AskAnswerResult, ConfirmResult, AskFieldsResult, FillResult, JobResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
 
@@ -78,6 +79,22 @@ async function updateBadge() {
   await browser.action.setTitle({ title: n ? `${base}：${n} 个收藏的岗位快截止了` : base });
 }
 
+/**
+ * 悬浮按钮：用户打开了「在这个网站一直显示」、浏览器也给了权限的网站，打开页面时注入页面脚本（只显示按钮，点了才填）。
+ * 权限和列表任一变了就重新登记；没有一个网站时取消登记。
+ */
+async function syncFabScript() {
+  const sites = await fabSitesItem.getValue();
+  const granted: string[] = [];
+  for (const s of sites) if (await browser.permissions.contains({ origins: [s] })) granted.push(s);
+  const old = await browser.scripting.getRegisteredContentScripts({ ids: [FAB_SCRIPT_ID] });
+  if (old.length) await browser.scripting.unregisterContentScripts({ ids: [FAB_SCRIPT_ID] });
+  if (!granted.length) return;
+  await browser.scripting.registerContentScripts([{
+    id: FAB_SCRIPT_ID, matches: granted, js: ['/content-scripts/content.js'], runAt: 'document_idle', persistAcrossSessions: true,
+  }]);
+}
+
 export default defineBackground(() => {
   // 第一次装上时打开使用教程（更新版本时不打开）
   browser.runtime.onInstalled.addListener(({ reason }) => {
@@ -89,7 +106,20 @@ export default defineBackground(() => {
   applicationStoreItem.watch(() => void updateBadge());
   void updateBadge();
 
-  browser.runtime.onMessage.addListener((msg: Request, _sender, sendResponse) => {
+  const syncFab = () => void syncFabScript().catch((e) => console.warn('悬浮按钮登记失败', e));
+  fabSitesItem.watch(syncFab);
+  browser.permissions.onAdded.addListener(syncFab);
+  browser.permissions.onRemoved.addListener(syncFab);
+  browser.runtime.onInstalled.addListener(syncFab);
+
+  browser.runtime.onMessage.addListener((msg: Request, sender, sendResponse) => {
+    // 悬浮按钮被点了：要在这次点击里马上打开侧边栏，不能先 await 别的
+    if (msg.type === 'open-sidepanel') {
+      const windowId = sender.tab?.windowId;
+      if (windowId == null) { sendResponse({ ok: false, reason: '找不到这个页面所在的窗口' }); return; }
+      browser.sidePanel.open({ windowId }).then(() => sendResponse({ ok: true }), (e) => sendResponse({ ok: false, reason: String(e) }));
+      return true;
+    }
     if (!msg.type.endsWith('-active-tab')) return;
     handle(msg).then(sendResponse, (e) => sendResponse({ ok: false, reason: String(e) }));
     return true;

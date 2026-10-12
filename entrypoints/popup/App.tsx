@@ -8,6 +8,7 @@ import type { FillResult, Request, UndoResult } from '@/src/lib/messages';
 import { activeProfile, setActive } from '@/src/lib/profile/store';
 import { useProfileStore } from '@/src/lib/profile/useProfileStore';
 import { SaveJobButton } from './SaveJob';
+import { FabToggle } from './FabToggle';
 import { aiAutoRunItem } from '@/src/lib/fill/reportStore';
 import { aiLeftCount } from '@/src/lib/fill/reasons';
 
@@ -132,12 +133,13 @@ export function App() {
           <ArrowRight {...iconProps} className="arrow" />
         </button>
       )}
-      {aiLeft > 0 && (
+      {result?.ok && (
         <button className="btn btn-secondary btn-block" onClick={aiFinish} disabled={busy}>
-          <Sparkles {...iconProps} /> 还有 {aiLeft} 项没填上，AI 帮我填完
+          <Sparkles {...iconProps} /> {aiLeft > 0 ? `还有 ${aiLeft} 项没填上，AI 帮我填完` : 'AI 帮我填完'}
         </button>
       )}
       {!result?.ok && <SaveJobButton onNotice={setNotice} disabled={busy} />}
+      {active && <FabToggle onNotice={setNotice} />}
 
       {active && store && (
         <div className="foot">

@@ -16,7 +16,8 @@ export function collectRoots(doc: Document, maxDepth = 3): Roots {
     roots.push(root);
     if (depth >= maxDepth) return;
     for (const el of root.querySelectorAll('*')) {
-      if (el.shadowRoot) visit(el.shadowRoot, depth + 1);
+      // 插件自己的候选卡、悬浮按钮不算
+      if (el.shadowRoot && !el.id.startsWith('wangshen-')) visit(el.shadowRoot, depth + 1);
       if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
         let inner: Document | null = null;
         try { inner = (el as HTMLIFrameElement).contentDocument; } catch { /* 跨域 */ }

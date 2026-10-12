@@ -2,7 +2,8 @@ import { startCandidateCard, type PickEvent } from '@/src/lib/fill/card';
 import { adoptPickers, fillFromAnswer, pageQuestions, ANSWER_PREFIX, countNewFillable, fillFromPlan, viewWidgets, widgetTargets, fillFromCandidate, fillFromGuess, guessPath, runFill, undoFill, unknownFields, UNKNOWN_REASON, type FillEntry, type FillItem } from '@/src/lib/fill/fill';
 import { applyMarks, clearMarks, reveal } from '@/src/lib/fill/marks';
 import { fieldMemoryItem, hostOf, remember, signature } from '@/src/lib/fill/memory';
-import { lastReportItem, pageChangeItem } from '@/src/lib/fill/reportStore';
+import { aiAutoRunItem, lastReportItem, pageChangeItem } from '@/src/lib/fill/reportStore';
+import { mountFab } from './fab';
 import type { AiApplyResult, AiFieldsResult, AiQuestionsResult, AiWidgetsResult, AskAnswerResult, ConfirmResult, AskFieldsResult, FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
 import type { FieldGuess } from '@/src/lib/ai/skills/fieldMatch';
 import type { WidgetPlan } from '@/src/lib/ai/skills/widgetPlan';
@@ -267,6 +268,28 @@ async function confirmAt(index: number): Promise<ConfirmResult> {
   return { ok: true, item: e.item };
 }
 
+/** 悬浮按钮上的操作：直接在页面里做，结果照样记下来给弹窗和侧边栏看 */
+const fabActions = {
+  async fill() {
+    const r = await exclusive(fill);
+    if (r.ok) await lastReportItem.setValue((r as FillResult & { ok: true }).report);
+    return r as FillResult;
+  },
+  async undo() {
+    const r = await exclusive(undo);
+    const last = await lastReportItem.getValue();
+    if (r.ok && last) await lastReportItem.setValue({ ...last, undoneAt: Date.now() });
+    return r as UndoResult;
+  },
+  async openPanel(ai: boolean) {
+    // 先记下要跑 AI，再马上请 background 打开侧边栏（要在用户点击后立刻打开，不能先等别的）
+    if (ai) void aiAutoRunItem.setValue(Date.now());
+    const r = await browser.runtime.sendMessage<Request, { ok: boolean; reason?: string }>({ type: 'open-sidepanel' }).catch((e: unknown) => ({ ok: false, reason: String(e) }));
+    if (!r?.ok && ai) void aiAutoRunItem.setValue(null);
+    return r?.ok ? null : (r?.reason ?? '打不开侧边栏');
+  },
+};
+
 function revealAt(index: number): RevealResult {
   const entry = window.__wangshenEntries?.[index];
   if (!entry || !entry.control.el.isConnected) return { ok: false, reason: NO_RECORD };
@@ -279,6 +302,8 @@ function revealAt(index: number): RevealResult {
  * 网申网站上由 content script 调用；插件自带的练习页直接调用，只接收发给它这个标签页的消息。
  */
 export function listen(accept: (msg: Request & { practiceTab?: number }) => boolean = () => true) {
+  // 悬浮按钮：用户隐藏过、又点了插件图标，就重新显示
+  mountFab(document, fabActions);
   // 同一页面可能被多次注入，只挂一次监听
   if (window.__wangshenReady) return;
   window.__wangshenReady = true;

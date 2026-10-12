@@ -12,6 +12,7 @@ import type { Profile } from '@/src/lib/profile/schema';
 import { ensureAccess, useAiSettings } from './AiSettingsCard';
 import { enabledSkills, DEFAULT_SKILL_PREFS } from '@/src/lib/ai/skillPrefs';
 import { useSkillPrefs } from './SkillSettings';
+import { storage } from 'wxt/utils/storage';
 
 // “问 AI”：像聊天一样提问，插件自动挑最合适的技能来回答（也可以手动指定）。
 
@@ -19,6 +20,9 @@ interface Turn { role: 'user' | 'assistant'; content: string; skill?: string; ho
 
 const HOW = { keyword: '自动选择', ai: '自动选择', keep: '接着上一个话题', fallback: '自动选择', manual: '你指定的' } as const;
 const MAX_HISTORY = 10;
+/** 每份档案各存一段对话，只存在本机；切换页面、换档案、关掉再打开都还在，点「新对话」才清空 */
+const MAX_SAVED = 200;
+const chatsItem = storage.defineItem<Record<string, Turn[]>>('local:aiChats', { fallback: {} });
 
 function pick<T>(xs: T[], n: number): T[] {
   return [...xs].sort(() => Math.random() - 0.5).slice(0, n);
@@ -28,7 +32,16 @@ export function AskAi({ profile }: { profile: Profile }) {
   const settings = useAiSettings();
   const prefs = useSkillPrefs()[0] ?? DEFAULT_SKILL_PREFS;
   const skills = enabledSkills(prefs);
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turns, setTurnsState] = useState<Turn[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    setLoaded(false);
+    void chatsItem.getValue().then((all) => { setTurnsState(all[profile.id] ?? []); setLoaded(true); });
+  }, [profile.id]);
+  const setTurns = (next: Turn[]) => {
+    setTurnsState(next);
+    void chatsItem.getValue().then((all) => chatsItem.setValue({ ...all, [profile.id]: next.slice(-MAX_SAVED) }));
+  };
   const [input, setInput] = useState('');
   const [manual, setManual] = useState('auto');
   const chosen = skills.some((s) => s.id === manual) ? manual : 'auto';
@@ -77,7 +90,7 @@ export function AskAi({ profile }: { profile: Profile }) {
 
   return (
     <div className="stack ask" style={{ gap: 'var(--space-4)' }}>
-      {turns.length === 0 && (
+      {loaded && turns.length === 0 && (
         <div className="stack">
           <p className="small muted">想问什么直接问，比如：</p>
           <div className="chips">

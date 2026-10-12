@@ -29,9 +29,9 @@ export function classifySection(title: string): Section | null {
   return null;
 }
 
-const HEADING = 'h1, h2, h3, h4, h5, h6, legend, [role="heading"], .ant-card-head-title, .el-card__header, [class*="section-title"], [class*="sectionTitle"], [class*="module-title"], [class*="block-title"], [class*="group-title"], [class*="blockTitle"], [id*="_Recruitment_"]:not([name]), [class*="FormSection-title"], .tit-wrap > .tit';
+const HEADING = 'h1, h2, h3, h4, h5, h6, legend, [role="heading"], .ant-card-head-title, .el-card__header, [class*="section-title"], [class*="sectionTitle"], [class*="module-title"], [class*="block-title"], [class*="group-title"], [class*="blockTitle"], [id*="_Recruitment_"]:not([name]), [class*="FormSection-title"], .tit-wrap > .tit, .applyFormModuleWrapper-title, .send_box > .send_title';
 // 后几个来自真实页面：Moka 的分区标题 blockTitle-xxx；北森的分区标题是带 _Recruitment_ id 的 div（表单本身同 id 但带 name）；
-// 飞书招聘的 createFormSection-title；Wecruit（hotjob）的 .tit-wrap > .tit
+// 飞书招聘的 createFormSection-title（新版 UD 组件库是 applyFormModuleWrapper-title，小鹏）；腾讯校招的 send_title；Wecruit（hotjob）的 .tit-wrap > .tit
 
 function level(h: Element): number {
   const m = /^H([1-6])$/.exec(h.tagName);
