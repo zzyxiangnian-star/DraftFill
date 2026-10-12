@@ -132,7 +132,7 @@ DraftFill 的思路是：**认得准的帮你填，认不准的宁可不填，�
 
 > 目前还没有上架应用商店，需要手动加载，一分钟就好。
 
-**[⬇ 下载 DraftFill.zip](https://github.com/zzyxiangnian-star/DraftFill/raw/main/release/DraftFill.zip)**（Chrome、Edge 通用，压缩包里附了一张安装使用教程图）
+**[⬇ 下载 DraftFill.zip](https://github.com/zzyxiangnian-star/DraftFill/releases/latest/download/DraftFill.zip)**（Chrome、Edge 通用，压缩包里附了一张安装使用教程图）
 
 1. 解压，得到 `DraftFill` 文件夹，放在一个不会被删的位置。
 2. 浏览器地址栏打开 `chrome://extensions`（Edge 是 `edge://extensions`），打开「开发者模式」。
