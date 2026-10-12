@@ -32,6 +32,12 @@ function fakeAnswer(body: string): string {
       awards: [{ name: '国家奖学金', level: '国家级', date: '2022.10' }, { name: '全国大学生数学建模竞赛省级一等奖', level: '省级', date: '2023.05' }],
     });
   }
+  if (sys.includes('从用户粘贴的校招通知')) {
+    return JSON.stringify({ company: '示例科技', position: '后端开发工程师', kind: '面试',
+      events: [{ title: '一面', start: '2026-10-15 14:00', end: '2026-10-15 15:00', place: '腾讯会议', link: 'https://meeting.example.com/abc123' },
+        { title: '在线测评', start: '2026-10-14 23:59', deadline: true, link: 'https://made-up.example.com/x' }],
+      prepare: ['提前测试摄像头和麦克风'], notes: [] });
+  }
   if (sys.includes('填表插件没认出来')) {
     // 认字段：把“昵称”认成学校（只为测试流程），其余认不出
     const user: string = JSON.parse(body).messages[1].content;
@@ -185,6 +191,37 @@ test('设置页：简历导入后点「用 AI 整理经历」，只发去掉个�
   for (const x of ['王小明', '138', 'wangxm@example.com']) expect(JSON.parse(aiRequests[0]!).messages[1].content).not.toContain(x);
   await page.getByRole('button', { name: '取消' }).click();
   await sw.evaluate(() => chrome.storage.local.remove('aiSettings'));
+  await page.close();
+});
+
+test('通知整理：粘贴面试通知，摘出日程，下载日历文件，记到投递看板', async () => {
+  aiRequests.length = 0;
+  await sw.evaluate((port) => chrome.storage.local.set({ aiSettings: { provider: 'custom', apiKey: 'test-key', model: 'fake', baseUrl: `http://localhost:${port}/v1` } }), PORT);
+  const id = new URL(sw.url()).host;
+  const page = await ctx.newPage();
+  await page.setViewportSize({ width: 1180, height: 1300 });
+  await page.goto(`chrome-extension://${id}/options.html#ai`);
+  await page.getByRole('tab', { name: '通知整理' }).click();
+  await page.getByPlaceholder(/笔试、测评、面试通知/).fill('王小明你好，诚邀参加示例科技一面：10月15日 14:00-15:00，腾讯会议 https://meeting.example.com/abc123 ，联系电话 13800138000。另请于10月14日23:59前完成测评。');
+  await page.getByRole('button', { name: '整理通知' }).click();
+  await expect(page.locator('.events li')).toHaveCount(2);
+  await expect(page.locator('.events')).toContainText('10 月 15 日（周四） 14:00–15:00');
+  await expect(page.locator('.events a')).toHaveCount(1); // 编出来的测评链接不显示
+  if (process.env.SHOT_NOTICE) await page.screenshot({ path: process.env.SHOT_NOTICE, fullPage: true });
+  const sent = JSON.parse(aiRequests[0]!).messages[1].content as string;
+  for (const x of ['王小明', '13800138000']) expect(sent).not.toContain(x);
+
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: '下载日历文件' }).click()]);
+  expect(download.suggestedFilename()).toMatch(/^draftfill-schedule-\d{8}\.ics$/);
+  const ics = readFileSync((await download.path())!, 'utf8');
+  expect(ics).toContain('DTSTART:20261015T140000');
+  expect(ics).toContain('SUMMARY:示例科技 面试 一面');
+
+  await page.getByRole('button', { name: '记到投递看板' }).click();
+  await expect(page.getByText(/新记一条「示例科技」|已更新投递看板/)).toBeVisible();
+  const apps = await sw.evaluate(async () => (await chrome.storage.local.get('applications')).applications.items);
+  expect(apps.find((a: { company: string }) => a.company === '示例科技')).toMatchObject({ status: '面试' });
+  await sw.evaluate(() => chrome.storage.local.remove(['aiSettings', 'applications']));
   await page.close();
 });
 

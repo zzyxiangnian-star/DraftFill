@@ -168,3 +168,37 @@ export function toCsv(items: Application[]): string {
 export function csvFileName(d = new Date()): string {
   return `wangshen-applications-${today(d).replace(/-/g, '')}.csv`;
 }
+
+// —— 计划书 L7：从笔试/面试通知更新看板 ——
+
+const ORDER: Status[] = ['已收藏', '已投递', '笔试/测评', '面试', 'offer'];
+const normCompany = (s: string) => s.replace(/\s|（.*?）|\(.*?\)|有限公司|股份|集团|科技|公司/g, '');
+
+/** 按公司名找看板里的那条投递（互相包含即可，取最近更新的） */
+export function findByCompany(items: Application[], company: string): Application | undefined {
+  const c = normCompany(company);
+  if (c.length < 2) return undefined;
+  return items.filter((a) => { const x = normCompany(a.company); return x.length >= 2 && (x.includes(c) || c.includes(x)); })
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+}
+
+export interface NoticeRecord {
+  company: string;
+  position: string;
+  /** 笔试/测评、面试；其他通知不改状态 */
+  status: Status | null;
+  /** 记进备注的一行，如“10-15 14:00 一面（腾讯会议）” */
+  line: string;
+}
+
+/** 有对应的投递就更新状态（只往前走，不倒退）并在备注里加一行；没有就新记一条 */
+export function recordNotice(s: ApplicationStore, n: NoticeRecord): { store: ApplicationStore; updated: Application | null } {
+  const hit = findByCompany(s.items, n.company);
+  if (hit) {
+    const forward = n.status && ORDER.indexOf(n.status) > ORDER.indexOf(hit.status) && ORDER.includes(hit.status);
+    const note = hit.note.includes(n.line) ? hit.note : [hit.note, n.line].filter(Boolean).join('\n');
+    const next = { ...hit, status: forward ? n.status! : hit.status, note, position: hit.position || n.position };
+    return { store: updateApplication(s, next), updated: next };
+  }
+  return { store: addApplication(s, { company: n.company, position: n.position, url: '', profileTitle: '', status: n.status ?? '已投递', note: n.line }), updated: null };
+}

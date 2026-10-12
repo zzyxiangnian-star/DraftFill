@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, ClipboardCopy, KeyRound, Loader2, Settings, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, CalendarPlus, Check, ClipboardCopy, KeyRound, ListPlus, Loader2, Settings, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { iconProps } from '@/src/components/icon';
 import { providerById } from '@/src/lib/ai/providers';
@@ -10,18 +10,21 @@ import { openQuestionSkill, type OpenQResult } from '@/src/lib/ai/skills/openQue
 import { polishSkill, type PolishResult } from '@/src/lib/ai/skills/polish';
 import type { Profile, ProfileStore } from '@/src/lib/profile/schema';
 import { updateProfile } from '@/src/lib/profile/store';
-import { applicationStoreItem } from '@/src/lib/tracker/applications';
+import { applicationStoreItem, recordNotice } from '@/src/lib/tracker/applications';
+import { noticeSkill, type NoticeEvent, type NoticeResult } from '@/src/lib/ai/skills/notice';
+import { toIcs } from '@/src/lib/tracker/ics';
 import { AiSettingsCard, ensureAccess, useAiSettings } from './AiSettingsCard';
 import { AskAi } from './AskAi';
 import { SkillSettings } from './SkillSettings';
 
-type Tool = 'ask' | 'diagnose' | 'polish' | 'jd' | 'question';
+type Tool = 'ask' | 'diagnose' | 'polish' | 'jd' | 'question' | 'notice';
 const TOOLS: { id: Tool; label: string; desc: string }[] = [
   { id: 'ask', label: '问 AI', desc: '求职上的任何问题都可以问：简历、面试、网申问答题、笔试、offer、邮件……插件会自动挑最合适的技能来回答。' },
   { id: 'diagnose', label: '简历诊断', desc: '按 HR 初筛的标准逐条检查，告诉你最该改的地方，以及面试官可能追问什么。' },
   { id: 'polish', label: '经历润色', desc: '按 STAR 法则改写实习、项目、校园经历的描述。只改写法，不编造数字和经历，满意可以一键写回档案。' },
   { id: 'jd', label: '岗位分析', desc: '粘贴岗位描述，拆出硬性要求和关键词，逐条对照你的经历，看哪段该突出、缺什么。' },
   { id: 'question', label: '开放题写作', desc: '网申里的问答题（为什么选择我们、最有成就感的事……），按题型写 3 个版本，严格控制字数。' },
+  { id: 'notice', label: '通知整理', desc: '粘贴笔试、测评、面试通知，摘出时间、链接和要准备的东西，存成日历文件（手机、电脑日历都能导入），也能记到投递看板。' },
 ];
 
 /** 运行一个技能：先申请访问权限（必须是点击后的第一个 await），再调用 */
@@ -245,6 +248,98 @@ function JdMatch({ profile, initial = '' }: { profile: Profile; initial?: string
   );
 }
 
+// —— 通知整理（计划书 L7）——
+const pad2 = (n: number) => String(n).padStart(2, '0');
+function todayStr(d = new Date()) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+const WEEK = '日一二三四五六';
+function when(e: NoticeEvent): string {
+  const d = new Date(`${e.start.slice(0, 10)}T00:00:00`);
+  const day = `${d.getMonth() + 1} 月 ${d.getDate()} 日（周${WEEK[d.getDay()]}）`;
+  const time = e.start.slice(11);
+  const end = e.end && e.end.slice(0, 10) === e.start.slice(0, 10) ? e.end.slice(11) : '';
+  return `${day}${time ? ` ${time}` : ''}${end ? `–${end}` : ''}`;
+}
+
+function Notice({ profile }: { profile: Profile }) {
+  const r = useRunner();
+  const [text, setText] = useState('');
+  const [res, setRes] = useState<NoticeResult | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const go = () => {
+    setSaved(null);
+    return r.run((signal) => runSkill(noticeSkill, { text: scrub(text, profile), today: todayStr() }, signal)).then((x) => x && setRes(x));
+  };
+  const prefix = res ? [res.company, res.kind !== '其他' ? res.kind.replace('/测评', '') : ''].filter(Boolean).join(' ') : '';
+
+  function download() {
+    if (!res) return;
+    const ics = toIcs(res.events, { prefix, extra: res.prepare.length ? `要准备：${res.prepare.join('；')}` : '' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+    // 文件名用英文：部分系统环境下中文文件名会被浏览器换成“download”
+    a.download = `draftfill-schedule-${todayStr().replace(/-/g, '')}.ics`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    // 立即回收会让部分浏览器丢掉文件名，稍后再回收
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  }
+
+  async function toBoard() {
+    if (!res) return;
+    const first = res.events[0];
+    const line = res.events.map((e) => `${e.start.slice(5)} ${e.title}${e.deadline ? '截止' : ''}${e.place ? `（${e.place}）` : ''}`).join('；') || '收到通知';
+    const { store, updated } = recordNotice(await applicationStoreItem.getValue(), {
+      company: res.company || '未知公司', position: res.position,
+      status: res.kind === '其他' ? null : res.kind, line: first ? line : '收到通知',
+    });
+    await applicationStoreItem.setValue(store);
+    setSaved(updated ? `已更新投递看板里「${updated.company}」这一条：状态 ${updated.status}，备注里加了时间。` : `看板里没有这家公司，已新记一条「${res.company || '未知公司'}」。`);
+  }
+
+  return (
+    <div className="stack" style={{ gap: 'var(--space-4)' }}>
+      <label className="field">
+        <span className="field-label">通知原文</span>
+        <textarea className="input textarea" rows={8} value={text} onChange={(e) => setText(e.target.value)}
+          placeholder="把邮件或短信里的笔试、测评、面试通知整段复制过来" />
+      </label>
+      <p className="privacy small">
+        <ShieldCheck {...iconProps} aria-hidden />
+        <span>只把这段通知发给 {r.provider}，发送前抹掉其中的手机号、邮箱、证件号和你的名字。不发送档案。</span>
+      </p>
+      <RunButton r={r} label="整理通知" onClick={go} disabled={text.trim().length < 10} />
+      <ErrorLine text={r.error} />
+      {res && (
+        <div className="ai-result enter">
+          <p><strong>{[res.company, res.position].filter(Boolean).join(' · ') || '通知'}</strong> <span className="tag tag-plain">{res.kind}</span></p>
+          {res.events.length ? (
+            <List title="日程" items={res.events}>
+              <ul className="events">
+                {res.events.map((e, i) => (
+                  <li key={i}>
+                    <strong>{when(e)}</strong> {e.title}{e.deadline && <span className="tag tag-mid">截止</span>}
+                    {e.place && <span className="muted small"> · {e.place}</span>}
+                    {e.link && <div className="small"><a href={e.link} target="_blank" rel="noreferrer">{e.link}</a></div>}
+                  </li>
+                ))}
+              </ul>
+            </List>
+          ) : <p className="muted">通知里没找到明确的日期时间。</p>}
+          <p className="small muted">时间和链接是从原文里摘的（原文里没有的链接不会显示），加进日历前请和原文对一遍。</p>
+          <List title="要准备的" items={res.prepare}><ul>{res.prepare.map((x) => <li key={x}>{x}</li>)}</ul></List>
+          <List title="注意事项" items={res.notes}><ul>{res.notes.map((x) => <li key={x}>{x}</li>)}</ul></List>
+          <div className="row" style={{ flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={download} disabled={!res.events.length}><CalendarPlus {...iconProps} /> 下载日历文件</button>
+            <button className="btn btn-secondary" onClick={toBoard}><ListPlus {...iconProps} /> 记到投递看板</button>
+          </div>
+          {saved && <p className="notice small enter" role="status">{saved}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // —— 开放题 ——
 function OpenQuestion({ profile }: { profile: Profile }) {
   const r = useRunner();
@@ -379,6 +474,7 @@ export function AiPage({ store, commit }: { store: ProfileStore; commit: (s: Pro
               : tool === 'diagnose' ? <Diagnose profile={profile} />
               : tool === 'polish' ? <Polish profile={profile} store={store} commit={commit} />
               : tool === 'jd' ? <JdMatch profile={profile} initial={jdFromBoard} />
+              : tool === 'notice' ? <Notice profile={profile} />
               : <OpenQuestion profile={profile} />}
           </div>
         </section>

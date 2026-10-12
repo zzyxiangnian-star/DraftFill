@@ -156,3 +156,9 @@
 .memory-list summary { cursor: pointer; padding: 6px 0; }
 .memory-list summary strong { font-weight: 500; }
 .memory-list details ul { margin: var(--space-1) 0 var(--space-2); padding-left: var(--space-5); display: grid; gap: 2px; }
+
+/* 通知整理 */
+.tag-plain { background: var(--surface-muted); color: var(--text-muted); }
+.events { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-2); }
+.events .tag { margin-left: 6px; height: 20px; }
+.events a { color: var(--brand); word-break: break-all; }
