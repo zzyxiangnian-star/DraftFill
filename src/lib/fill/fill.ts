@@ -10,11 +10,14 @@ import { collectRoots } from './roots';
 import { datePartValue } from './dates';
 import { generalPath, hostOf, recall, signature, type FieldMemory } from './memory';
 import { ALIASES } from './aliases';
-import { UNKNOWN_REASON } from './reasons';
+import { PICKER_REASON, UNKNOWN_REASON } from './reasons';
 import type { UnknownField } from '../ai/skills/fieldMatch';
 import { chooseFuzzy, expandSchool, fuzzyKindOf } from './fuzzy';
 import { chooseRegion, chooseRepeat, shortRegion } from './region';
 import { addMissingEntries } from './addEntries';
+import { matchesDate, runSteps, shownValue, typable, valueShape, viewWidget, widgetVars } from './widget';
+import type { WidgetStep, WidgetView } from '../ai/skills/widgetPlan';
+import { PERSONAL, type PageQuestion } from '../ai/skills/pageQuestions';
 
 // Filler：按控件类型分派写入，写入后回读页面实际显示的值。只填不交。
 
@@ -60,7 +63,7 @@ const SKIP_KIND: Partial<Record<Control['kind'], string>> = {
   captcha: '验证码，按规则不填',
   file: '附件需要你自己上传',
   checkbox: '复选框需要你自己勾选',
-  readonly: '这一项要在弹出的面板里点选，请自己选一下',
+  readonly: PICKER_REASON,
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -728,9 +731,11 @@ export function unknownFields(entries: FillEntry[]): UnknownField[] {
   const out: UnknownField[] = [];
   entries.forEach((e, id) => {
     const c = e.control;
-    if (e.item.path !== null || e.item.note !== UNKNOWN_REASON || !pickable(c) || !c.el.isConnected || !isEmpty(c)) return;
+    const picker = c.kind === 'readonly';
+    if (e.item.path !== null || e.item.note !== UNKNOWN_REASON || !(pickable(c) || picker) || !c.el.isConnected) return;
+    if (picker ? shownValue(c) : !isEmpty(c)) return;
     if (!c.label && !c.placeholder) return;
-    const kind = c.kind === 'textarea' ? 'textarea' : c.kind === 'text' || c.kind === 'date' || c.kind === 'month' ? 'text' : 'choice';
+    const kind = c.kind === 'textarea' ? 'textarea' : ['text', 'date', 'month', 'readonly'].includes(c.kind) ? 'text' : 'choice';
     out.push({ id, label: describe(c), placeholder: c.placeholder.slice(0, 40), section: c.section, kind, options: c.options.slice(0, 20) });
   });
   return out;
@@ -860,4 +865,113 @@ export async function undoFill(entries: FillEntry[]): Promise<{ restored: number
     }
   }
   return { restored, failed };
+}
+
+// —— AI 帮我填完：规则没能操作的控件（各家写法不同的日期面板等），由 AI 看面板出步骤 ——
+
+export const AI_WIDGET_NOTE = 'AI 操作面板填的，请核对';
+
+/**
+ * 只能点选的框（日期、年月面板）在规则填写时一律跳过。这里先按规则认出它对应档案里的哪一项；
+ * 认不出的改成“没认出”，交给 AI 认字段。
+ */
+export function adoptPickers(entries: FillEntry[], profile: Profile): void {
+  entries.forEach((e, id) => {
+    if (e.control.kind !== 'readonly' || e.item.path !== null || e.item.note !== PICKER_REASON || shownValue(e.control)) return;
+    const m = matchControl(e.control, profile);
+    if (m.path === null) { e.item = { ...e.item, note: UNKNOWN_REASON }; return; }
+    e.item = { ...e.item, path: guessPath(entries, id, m.path), note: PICKER_REASON };
+  });
+}
+
+/** 认出了档案项、档案里有值、但规则没能填上的日期类控件 */
+export function widgetTargets(entries: FillEntry[], profile: Profile): number[] {
+  const out: number[] = [];
+  entries.forEach((e, id) => {
+    const { path, status } = e.item;
+    const c = e.control;
+    if (!path || !c.el.isConnected || status === 'ok' || status === 'warn') return;
+    if (c.part || !(c.kind === 'readonly' || DATE_PATH.test(path)) || (SKIP_KIND[c.kind] && c.kind !== 'readonly')) return;
+    if (shownValue(c) && status !== 'err') return;
+    const v = resolveValue(profile, path, e.pathIndex);
+    if (v.value === null || !widgetVars(v.value).YYYY) return;
+    out.push(id);
+  });
+  return out;
+}
+
+/** 点开每个目标控件，记下面板的样子（只有按钮文字，不含档案内容） */
+export async function viewWidgets(entries: FillEntry[], ids: number[], profile: Profile): Promise<WidgetView[]> {
+  const out: WidgetView[] = [];
+  for (const id of ids) {
+    const e = entries[id]!;
+    const v = resolveValue(profile, e.item.path!, e.pathIndex);
+    let panel: string[] = [];
+    try { panel = await viewWidget(e.control); } catch { /* 安全检查拒绝点击：当作没有面板 */ }
+    out.push({
+      id, label: describe(e.control), target: pathName(e.item.path!), shape: valueShape(v.value ?? ''),
+      placeholder: e.control.placeholder.slice(0, 40), typable: typable(e.control), panel, why: e.item.note,
+    });
+  }
+  return out;
+}
+
+/** 按 AI 给的步骤操作并回读；对上了一律标黄 */
+export async function fillFromPlan(e: FillEntry, profile: Profile, steps: WidgetStep[]): Promise<FillItem> {
+  const v = resolveValue(profile, e.item.path!, e.pathIndex);
+  if (v.value === null) return e.item;
+  const vars = widgetVars(v.value);
+  if (!e.written) e.original = shownValue(e.control);
+  let why: string | null;
+  try {
+    why = await runSteps(e.control, steps, vars);
+  } catch (err) {
+    why = err instanceof SafetyError ? err.message : `操作出错：${String(err)}`;
+  }
+  e.written = true;
+  const shown = shownValue(e.control);
+  if (!why && matchesDate(shown, vars)) {
+    e.item = { ...e.item, status: 'warn', value: shown, note: AI_WIDGET_NOTE };
+  } else {
+    const note = why ?? (shown ? `AI 操作后显示“${shown}”，和档案不一致` : 'AI 操作后页面没有变化');
+    e.item = { ...e.item, status: shown ? 'err' : 'skip', value: shown, note: `${note}，请自己选一下` };
+  }
+  return e.item;
+}
+
+// —— AI 帮我填完：档案里没有的问题（公司自己加的开放题、选择题），按简历让 AI 回答 ——
+
+export const AI_ANSWER_NOTE = 'AI 按你的简历回答的，请改一改再提交';
+
+/** 还空着、没认出档案项、不涉及个人隐私的问题。只取题目文字和选项。 */
+export function pageQuestions(entries: FillEntry[]): PageQuestion[] {
+  const out: PageQuestion[] = [];
+  entries.forEach((e, id) => {
+    const c = e.control;
+    if (e.item.path !== null || e.item.note !== UNKNOWN_REASON || !pickable(c) || !c.el.isConnected || !isEmpty(c)) return;
+    const question = describe(c);
+    if (question.length < 2 || PERSONAL.test(question)) return;
+    const kind = c.kind === 'textarea' ? 'textarea' : ['text', 'date', 'month'].includes(c.kind) ? 'text' : 'choice';
+    if (kind === 'choice' && !c.options.length) return; // 自定义下拉点开前读不到选项，AI 没法选
+    if (c.kind === 'date' || c.kind === 'month') return;
+    const limit = Number(c.el.getAttribute('maxlength')) || 0;
+    out.push({ id, question: question.slice(0, 120), kind, options: c.options.slice(0, 20), limit: limit > 0 ? limit : 0 });
+  });
+  return out.slice(0, 30);
+}
+
+/** 写入 AI 的回答：一律标黄 */
+export async function fillFromAnswer(e: FillEntry, answer: string): Promise<FillItem> {
+  if (!e.written) e.original = originalValue(e.control);
+  let o: Outcome;
+  try {
+    o = await write(e.control, 'ai:answer', answer, false);
+  } catch (err) {
+    o = fail('', err instanceof SafetyError ? err.message : `填写出错：${String(err)}`);
+  }
+  const gap = /【待补充/.test(answer);
+  if (o.status === 'ok' || o.status === 'warn') o = { ...o, status: 'warn', note: gap ? `${AI_ANSWER_NOTE}；里面有【待补充】要你自己补上` : AI_ANSWER_NOTE };
+  e.item = { ...e.item, status: o.status, value: o.value, note: o.note };
+  e.written ||= o.status !== 'skip';
+  return e.item;
 }

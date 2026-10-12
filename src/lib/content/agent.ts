@@ -1,10 +1,13 @@
 import { startCandidateCard, type PickEvent } from '@/src/lib/fill/card';
-import { ANSWER_PREFIX, countNewFillable, fillFromCandidate, fillFromGuess, guessPath, runFill, undoFill, unknownFields, UNKNOWN_REASON, type FillEntry, type FillItem } from '@/src/lib/fill/fill';
+import { adoptPickers, fillFromAnswer, pageQuestions, ANSWER_PREFIX, countNewFillable, fillFromPlan, viewWidgets, widgetTargets, fillFromCandidate, fillFromGuess, guessPath, runFill, undoFill, unknownFields, UNKNOWN_REASON, type FillEntry, type FillItem } from '@/src/lib/fill/fill';
 import { applyMarks, clearMarks, reveal } from '@/src/lib/fill/marks';
 import { fieldMemoryItem, hostOf, remember, signature } from '@/src/lib/fill/memory';
 import { lastReportItem, pageChangeItem } from '@/src/lib/fill/reportStore';
-import type { AiApplyResult, AiFieldsResult, AskAnswerResult, AskFieldsResult, FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
+import type { AiApplyResult, AiFieldsResult, AiQuestionsResult, AiWidgetsResult, AskAnswerResult, AskFieldsResult, FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
 import type { FieldGuess } from '@/src/lib/ai/skills/fieldMatch';
+import type { WidgetPlan } from '@/src/lib/ai/skills/widgetPlan';
+import type { QuestionAnswer } from '@/src/lib/ai/skills/pageQuestions';
+import { guessJob } from '@/src/lib/tracker/guess';
 import { activeProfile, loadStore, saveStore, updateProfile } from '@/src/lib/profile/store';
 import { fillFromUser, missingFields, saveAnswer } from '@/src/lib/fill/ask';
 import { extractJob } from '@/src/lib/tracker/jobPage';
@@ -114,6 +117,8 @@ async function aiFields(): Promise<AiFieldsResult> {
   const entries = window.__wangshenEntries;
   if (!entries) return { ok: false, reason: NO_RECORD };
   const profile = activeProfile(await loadStore());
+  // 只能点选的框先按规则认档案项，认不出的一起交给 AI 认
+  if (profile) adoptPickers(entries, profile);
   return { ok: true, fields: unknownFields(entries), custom: (profile?.custom ?? []).filter((f) => f.label).map((f) => ({ id: f.id, label: f.label })) };
 }
 
@@ -142,6 +147,66 @@ async function aiApply(guesses: FieldGuess[]): Promise<AiApplyResult> {
   applyMarks(document, entries);
   await updateReport(changed);
   await openCard(entries, profile);
+  const filled = changed.filter((i) => i.status === 'warn').length;
+  return { ok: true, filled, skipped: changed.length - filled };
+}
+
+/** AI 帮我填完：点开规则没能操作的控件，把面板的样子交给侧边栏去问 AI */
+async function aiWidgets(): Promise<AiWidgetsResult> {
+  const entries = window.__wangshenEntries;
+  if (!entries) return { ok: false, reason: NO_RECORD };
+  const profile = activeProfile(await loadStore());
+  if (!profile) return { ok: false, reason: '还没有档案，请先在设置页创建' };
+  window.__wangshenCard?.();
+  adoptPickers(entries, profile);
+  const views = await viewWidgets(entries, widgetTargets(entries, profile), profile);
+  await openCard(entries, profile);
+  return { ok: true, views };
+}
+
+/** 按 AI 给的步骤操作面板，回读对上的标黄 */
+async function aiWidgetsApply(plans: WidgetPlan[]): Promise<AiApplyResult> {
+  const entries = window.__wangshenEntries;
+  if (!entries) return { ok: false, reason: NO_RECORD };
+  const profile = activeProfile(await loadStore());
+  if (!profile) return { ok: false, reason: '还没有档案，请先在设置页创建' };
+  window.__wangshenCard?.();
+  const targets = new Set(widgetTargets(entries, profile));
+  const changed: FillItem[] = [];
+  for (const p of plans) {
+    const e = entries[p.id];
+    if (!e || !targets.has(p.id)) continue;
+    changed.push(await fillFromPlan(e, profile, p.steps));
+  }
+  applyMarks(document, entries);
+  await updateReport(changed);
+  await openCard(entries, profile);
+  const filled = changed.filter((i) => i.status === 'warn').length;
+  return { ok: true, filled, skipped: changed.length - filled };
+}
+
+/** AI 帮我填完：档案里没有的问题，只交出题目和选项 */
+function aiQuestions(): AiQuestionsResult {
+  const entries = window.__wangshenEntries;
+  if (!entries) return { ok: false, reason: NO_RECORD };
+  const job = guessJob(document);
+  return { ok: true, questions: pageQuestions(entries), company: [job.company, job.position].filter(Boolean).join(' · ') };
+}
+
+async function aiAnswersApply(answers: QuestionAnswer[]): Promise<AiApplyResult> {
+  const entries = window.__wangshenEntries;
+  if (!entries) return { ok: false, reason: NO_RECORD };
+  window.__wangshenCard?.();
+  const allowed = new Set(pageQuestions(entries).map((q) => q.id));
+  const changed: FillItem[] = [];
+  for (const a of answers) {
+    const e = entries[a.id];
+    if (e && allowed.has(a.id)) changed.push(await fillFromAnswer(e, a.answer));
+  }
+  applyMarks(document, entries);
+  await updateReport(changed);
+  const profile = activeProfile(await loadStore());
+  if (profile) await openCard(entries, profile);
   const filled = changed.filter((i) => i.status === 'warn').length;
   return { ok: true, filled, skipped: changed.length - filled };
 }
@@ -217,6 +282,10 @@ export function listen(accept: (msg: Request & { practiceTab?: number }) => bool
     if (msg.type === 'job') sendResponse({ ok: true, job: extractJob(document) });
     if (msg.type === 'ai-fields') { aiFields().then(sendResponse, fail); return true; }
     if (msg.type === 'ai-apply') { exclusive(() => aiApply(msg.guesses)).then(sendResponse, fail); return true; }
+    if (msg.type === 'ai-widgets') { exclusive(aiWidgets).then(sendResponse, fail); return true; }
+    if (msg.type === 'ai-widgets-apply') { exclusive(() => aiWidgetsApply(msg.plans)).then(sendResponse, fail); return true; }
+    if (msg.type === 'ai-questions') sendResponse(aiQuestions());
+    if (msg.type === 'ai-answers-apply') { exclusive(() => aiAnswersApply(msg.answers)).then(sendResponse, fail); return true; }
     if (msg.type === 'ask-fields') sendResponse(askFields());
     if (msg.type === 'ask-answer') { exclusive(() => askAnswer(msg.index, msg.value, msg.save)).then(sendResponse, fail); return true; }
   });

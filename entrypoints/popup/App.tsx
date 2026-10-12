@@ -8,6 +8,8 @@ import type { FillResult, Request, UndoResult } from '@/src/lib/messages';
 import { activeProfile, setActive } from '@/src/lib/profile/store';
 import { useProfileStore } from '@/src/lib/profile/useProfileStore';
 import { SaveJobButton } from './SaveJob';
+import { aiAutoRunItem } from '@/src/lib/fill/reportStore';
+import { aiLeftCount } from '@/src/lib/fill/reasons';
 
 const PREVIEW = 5;
 
@@ -56,6 +58,13 @@ export function App() {
   }
 
   const openOptions = () => browser.runtime.openOptionsPage();
+
+  /** 剩下的交给 AI：在侧边栏里做（弹窗一失焦就会关掉，等不了 AI） */
+  function aiFinish() {
+    void aiAutoRunItem.setValue(Date.now());
+    void openSidePanel();
+  }
+  const aiLeft = result?.ok ? aiLeftCount(result.report.items) : 0;
 
   return (
     <div className="popup">
@@ -115,6 +124,11 @@ export function App() {
           <Sparkles {...iconProps} />
           {busy ? '正在填写…' : result?.ok ? '再填一次' : '一键填充'}
           <ArrowRight {...iconProps} className="arrow" />
+        </button>
+      )}
+      {aiLeft > 0 && (
+        <button className="btn btn-secondary btn-block" onClick={aiFinish} disabled={busy}>
+          <Sparkles {...iconProps} /> 还有 {aiLeft} 项没填上，AI 帮我填完
         </button>
       )}
       {!result?.ok && <SaveJobButton onNotice={setNotice} disabled={busy} />}

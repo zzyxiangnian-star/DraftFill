@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>自制日期面板测试页（AI 帮我填完）</title>
+<style>
+  body { font: 14px/1.6 sans-serif; max-width: 760px; margin: 24px auto; }
+  .row { margin: 10px 0; } .row > label { display: inline-block; width: 200px; text-align: right; margin-right: 8px; }
+  .cal-pop, .ym-pop { position: absolute; background: #fff; border: 1px solid #ccc; padding: 8px; z-index: 10; }
+  .cal-pop .grid { display: grid; grid-template-columns: repeat(7, 32px); gap: 4px; }
+  .cal-pop .head { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; }
+  .cal-pop .head i { cursor: pointer; font-style: normal; width: 16px; height: 16px; display: inline-block; background: #eee; }
+  .ym-pop .years { height: 120px; overflow: auto; width: 80px; display: inline-block; vertical-align: top; }
+  .ym-pop .months { display: inline-grid; grid-template-columns: repeat(4, 36px); gap: 4px; }
+  .cell { cursor: pointer; text-align: center; }
+</style>
+</head>
+<body>
+<!-- 自制测试页：各家写法不同的日期面板（只能点选、规则操作不了）和档案里没有的问题。data-expect 是正确答案。 -->
+<h1>示例公司 2027 届校园招聘</h1>
+<form id="apply" onsubmit="window.__submitted = true; return false;">
+  <h3>基本信息</h3>
+  <div class="row" data-expect="basic.name"><label for="xm">姓名</label><input id="xm"></div>
+  <div class="row" data-expect="none"><label for="birth">出生日期</label><input id="birth" readonly placeholder="请选择出生日期"></div>
+  <div class="row" data-expect="none"><label for="dorm">宿舍楼号</label><input id="dorm"></div>
+  <h3>教育经历</h3>
+  <div class="row" data-expect="education[0].school"><label for="school">学校名称</label><input id="school"></div>
+  <div class="row" data-expect="none"><label for="enter">入学时间</label><input id="enter" readonly placeholder="请选择年月"></div>
+  <h3>其他问题</h3>
+  <div class="row" data-expect="none"><label for="why">你为什么想加入我们</label><textarea id="why" maxlength="300"></textarea></div>
+  <div class="row" data-expect="none"><label for="from">你是从哪里了解到我们的</label>
+    <select id="from"><option value="">请选择</option><option>校园宣讲会</option><option>官网</option><option>朋友推荐</option><option>招聘网站</option></select></div>
+  <p><button type="submit">提交</button></p>
+</form>
+<script>
+  const close = () => document.querySelectorAll('.cal-pop, .ym-pop').forEach((p) => p.remove());
+  document.addEventListener('mousedown', (e) => { if (!e.target.closest('.cal-pop, .ym-pop, input[readonly]')) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  const place = (pop, input) => { const r = input.getBoundingClientRect(); pop.style.left = `${r.left + scrollX}px`; pop.style.top = `${r.bottom + scrollY + 4}px`; document.body.append(pop); };
+
+  // 出生日期：年份只能用“上一年 / 下一年”图标按钮翻，选月再选日，点日后写成 2001/5/20
+  const birth = document.getElementById('birth');
+  birth.addEventListener('click', () => {
+    close();
+    let year = 2026;
+    const pop = document.createElement('div');
+    pop.className = 'cal-pop';
+    const months = () => {
+      pop.innerHTML = `<div class="head"><i class="cal-prev-year" title=""></i><span class="cal-year">${year}年</span><i class="cal-next-year"></i></div><div class="grid"></div>`;
+      pop.querySelector('.cal-prev-year').onclick = () => { year--; months(); };
+      pop.querySelector('.cal-next-year').onclick = () => { year++; months(); };
+      for (let m = 1; m <= 12; m++) {
+        const c = document.createElement('span'); c.className = 'cell'; c.textContent = `${m}月`;
+        c.onclick = () => days(m); pop.querySelector('.grid').append(c);
+      }
+    };
+    const days = (m) => {
+      pop.innerHTML = `<div class="head"><span>${year}年${m}月</span></div><div class="grid"></div>`;
+      for (let d = 1; d <= new Date(year, m, 0).getDate(); d++) {
+        const c = document.createElement('span'); c.className = 'cell'; c.textContent = String(d);
+        c.onclick = () => { birth.value = `${year}/${m}/${d}`; close(); }; pop.querySelector('.grid').append(c);
+      }
+    };
+    months();
+    place(pop, birth);
+  });
+
+  // 入学时间：左边滚动的年份列表，右边 01–12 月，写成 2024年09月
+  const enter = document.getElementById('enter');
+  enter.addEventListener('click', () => {
+    close();
+    let year = null;
+    const pop = document.createElement('div');
+    pop.className = 'ym-pop';
+    pop.innerHTML = '<div class="years"></div><div class="months"></div>';
+    for (let y = 2035; y >= 2010; y--) {
+      const c = document.createElement('div'); c.className = 'cell'; c.textContent = String(y);
+      c.onclick = () => { year = y; pop.querySelectorAll('.years .cell').forEach((x) => x.style.background = ''); c.style.background = '#def'; };
+      pop.querySelector('.years').append(c);
+    }
+    for (let m = 1; m <= 12; m++) {
+      const c = document.createElement('span'); c.className = 'cell'; c.textContent = String(m).padStart(2, '0');
+      c.onclick = () => { if (year) { enter.value = `${year}年${String(m).padStart(2, '0')}月`; close(); } };
+      pop.querySelector('.months').append(c);
+    }
+    place(pop, enter);
+  });
+</script>
+</body>
+</html>

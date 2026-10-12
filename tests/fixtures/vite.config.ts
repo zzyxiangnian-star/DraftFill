@@ -22,6 +22,7 @@ export default defineConfig({
         'steps-frame': resolve(root, 'steps-frame.html'),
         multi: resolve(root, 'multi.html'),
         job: resolve(root, 'job.html'),
+        widgets: resolve(root, 'widgets.html'),
       },
     },
   },

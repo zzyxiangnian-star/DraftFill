@@ -6,7 +6,7 @@ import { iconProps } from '@/src/components/icon';
 import type { FillResult, Request, UndoResult } from '@/src/lib/messages';
 import type { FillItem, FillReport } from '@/src/lib/fill/fill';
 import { lastReportItem, pageChangeItem, type PageChange } from '@/src/lib/fill/reportStore';
-import { UNKNOWN_REASON } from '@/src/lib/fill/reasons';
+import { aiLeftCount } from '@/src/lib/fill/reasons';
 import { AiGuess } from './AiGuess';
 import { AskMissing } from './AskMissing';
 import { Board } from './Board';
@@ -43,7 +43,7 @@ function Result({ report }: { report: FillReport }) {
     return pageChangeItem.watch(setChange);
   }, []);
   const fresh = !undone && change && change.count > 0 && change.at > report.at ? change : null;
-  const unknown = report.items.filter((i) => i.path === null && i.note === UNKNOWN_REASON).length;
+  const aiLeft = aiLeftCount(report.items);
 
   async function fillAgain() {
     setBusy(true);
@@ -96,7 +96,7 @@ function Result({ report }: { report: FillReport }) {
         </section>
       )}
       {!undone && <AskMissing key={`ask-${report.at}`} />}
-      {!undone && <AiGuess count={unknown} key={report.at} />}
+      {!undone && <AiGuess count={aiLeft} key={report.at} />}
       {!!report.added?.length && !undone && (
         <p className="notice small">自动添加了 {report.added.map((a) => `${a.count} 段${a.name}`).join('、')}，并按档案填好。撤销不会删掉这些段落，不需要的话请自己删除。</p>
       )}

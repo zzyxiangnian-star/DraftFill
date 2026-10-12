@@ -47,6 +47,25 @@ function fakeAnswer(body: string): string {
     const fields = [...user.matchAll(/(\d+)\. 字段名“([^”]*)”/g)].map((m) => ({ id: Number(m[1]), path: m[2] === '昵称' ? 'education[].school' : null }));
     return JSON.stringify({ fields });
   }
+  if (sys.includes('填表插件没能自动填上')) {
+    // 操作控件：按面板写法给步骤，值用占位符
+    const user: string = JSON.parse(body).messages[1].content;
+    const fields = [...user.matchAll(/(\d+)\. 字段“([^”]*)”/g)].map((m) => ({
+      id: Number(m[1]),
+      steps: m[2] === '出生日期'
+        ? [{ do: 'open' }, { do: 'navigate', button: 'cal-prev-year', until: '{YYYY}年', max: 40 }, { do: 'click', text: '{M}月' }, { do: 'click', text: '{D}' }]
+        : [{ do: 'open' }, { do: 'click', text: '{YYYY}' }, { do: 'click', text: '{MM}' }],
+    }));
+    return JSON.stringify({ fields });
+  }
+  if (sys.includes('候选人的档案里没有现成答案')) {
+    const user: string = JSON.parse(body).messages[1].content;
+    const answers = [...user.matchAll(/(\d+)\. ([^（\n]+)（/g)].map((m) => ({
+      id: Number(m[1]),
+      answer: m[2]!.includes('了解') ? '校园宣讲会' : m[2]!.includes('为什么') ? '我在订单服务实习中做过后端开发，想继续做电商后端。' : null,
+    }));
+    return JSON.stringify({ answers });
+  }
   if (sys.includes('"followUps"')) {
     return JSON.stringify({ score: 72, scores: [{ name: '可信度', score: 80 }], summary: '经历扎实，结果写得不够。', strengths: ['有大厂相关实习'],
       issues: [{ level: '高', where: '实习经历', problem: '没有量化结果', fix: '写清压测把接口延迟降低了多少' }], missing: [], followUps: ['压测是怎么做的'] });
@@ -375,16 +394,19 @@ test('AI 认字段：侧边栏点一下，只发字段名；认出的标黄并�
   await side.goto(`chrome-extension://${id}/sidepanel.html`);
   const page = ctx.pages().find((p) => p.url().endsWith('/steps.html'))!;
   await page.bringToFront(); // 侧边栏操作的是当前标签页
-  await side.getByRole('button', { name: '让 AI 认一认' }).click();
-  await expect(side.getByText(/AI 认出并填上了 1 个字段/)).toBeVisible();
+  await side.getByRole('button', { name: 'AI 帮我填完' }).click();
+  await expect(side.getByText(/AI 认出 1 个字段，都已标黄/)).toBeVisible({ timeout: 30_000 });
   if (process.env.SHOT_AI_GUESS) await side.screenshot({ path: process.env.SHOT_AI_GUESS, fullPage: true });
   expect(await page.inputValue('#nick')).toBe('北京大学');
   await expect(side.locator('.report-list li', { hasText: '昵称' })).toContainText('AI 认作“学校”，请核对');
 
   const p = sampleProfile();
+  // 认字段只发字段名，不含任何档案内容；回答问题时才带去掉个人信息的简历（有学校、公司，没有姓名电话）
+  const match = aiRequests.find((b) => b.includes('填表插件没认出来'))!;
+  expect(match).toContain('昵称');
+  for (const x of [p.basic.name, p.basic.phone, p.basic.email, p.education[0]!.school, p.internships[0]!.company]) expect(match).not.toContain(x);
   const sent = aiRequests.join('\n');
-  expect(sent).toContain('昵称');
-  for (const x of [p.basic.name, p.basic.phone, p.basic.email, p.education[0]!.school, p.internships[0]!.company]) expect(sent).not.toContain(x);
+  for (const x of [p.basic.name, p.basic.phone, p.basic.email]) expect(sent).not.toContain(x);
   const mem = await sw.evaluate(async () => Object.values((await chrome.storage.local.get('fieldMemory')).fieldMemory?.items ?? {}));
   expect(mem).toEqual([expect.objectContaining({ path: 'education[0].school', source: 'ai' })]);
   await first.close();
@@ -395,6 +417,42 @@ test('AI 认字段：侧边栏点一下，只发字段名；认出的标黄并�
   expect(again.submitted).toBe(false);
   await sw.evaluate(() => chrome.storage.local.remove(['fieldMemory', 'aiSettings', 'lastReport']));
   await again.close();
+});
+
+test('AI 帮我填完：日期面板按 AI 步骤点选、档案里没有的问题让 AI 回答；不发个人信息，不提交', async () => {
+  aiRequests.length = 0;
+  await sw.evaluate((port) => chrome.storage.local.set({ aiSettings: { provider: 'custom', apiKey: 'test-key', model: 'fake', baseUrl: `http://localhost:${port}/v1` } }), PORT);
+  const first = await run('widgets');
+  expect(first.report.items.find((i) => i.label.startsWith('出生日期'))).toMatchObject({ status: 'skip' });
+  await sw.evaluate((r) => chrome.storage.local.set({ lastReport: r }), first.report);
+  const id = new URL(sw.url()).host;
+  const side = await ctx.newPage();
+  await side.setViewportSize({ width: 400, height: 1000 });
+  await side.goto(`chrome-extension://${id}/sidepanel.html`);
+  const page = ctx.pages().find((p) => p.url().endsWith('/widgets.html'))!;
+  await page.bringToFront();
+  await side.getByRole('button', { name: 'AI 帮我填完' }).click();
+  await expect(side.getByText(/都已标黄/)).toBeVisible({ timeout: 30_000 });
+  if (process.env.SHOT_AI_FILL) await side.screenshot({ path: process.env.SHOT_AI_FILL, fullPage: true });
+  expect(await page.inputValue('#birth')).toBe('2001/5/20');
+  expect(await page.inputValue('#enter')).toBe('2024年09月');
+  expect(await page.inputValue('#why')).toContain('后端');
+  expect(await page.inputValue('#from')).toBe('校园宣讲会');
+  expect(await page.inputValue('#dorm')).toBe('');
+  await expect(side.locator('.report-list li', { hasText: '出生日期' })).toContainText('AI 操作面板填的');
+  await expect(side.locator('.report-list li', { hasText: '为什么' })).toContainText('AI 按你的简历回答的');
+
+  const p = sampleProfile();
+  const sent = aiRequests.join('\n');
+  expect(sent).toContain('2026年'); // 面板上的按钮文字
+  expect(sent).toContain('cal-prev-year');
+  // 认字段只发字段名（宿舍楼号会出现）；回答问题时只人知道的题不交给 AI
+  expect(aiRequests.find((b) => b.includes('候选人的档案里没有现成答案'))).not.toContain('宿舍楼号');
+  for (const x of [p.basic.name, p.basic.phone, p.basic.email, p.basic.birthDate, '2001']) expect(sent).not.toContain(x);
+  expect(await page.evaluate(() => (window as unknown as { __submitted?: boolean }).__submitted ?? false)).toBe(false);
+  await sw.evaluate(() => chrome.storage.local.remove(['fieldMemory', 'aiSettings', 'lastReport']));
+  await first.close();
+  await side.close();
 });
 
 test('回答库：网申页面的问答题里列出相似题的旧回答；开放题写作里让 AI 按新题改写并存进回答库', async () => {

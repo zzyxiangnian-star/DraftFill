@@ -12,3 +12,6 @@ export interface PageChange {
   count: number;
 }
 export const pageChangeItem = storage.defineItem<PageChange | null>('local:pageChange', { fallback: null });
+
+/** 弹窗里点了「AI 帮我填完」的时间：侧边栏打开后看到就自动开始，用过即清 */
+export const aiAutoRunItem = storage.defineItem<number | null>('local:aiAutoRun', { fallback: null });
