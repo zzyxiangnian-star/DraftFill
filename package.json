@@ -1,7 +1,7 @@
 {
   "name": "draftfill",
   "description": "网申助手：在国内网申页面一键填写个人档案，只填不交",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "MIT",
