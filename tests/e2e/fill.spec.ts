@@ -23,6 +23,12 @@ const aiRequests: string[] = [];
 function fakeAnswer(body: string): string {
   const sys: string = JSON.parse(body).messages[0].content;
   if (sys.includes('你是一个分类器')) return '{"skill":"general"}';
+  if (sys.includes('填表插件没认出来')) {
+    // 认字段：把“昵称”认成学校（只为测试流程），其余认不出
+    const user: string = JSON.parse(body).messages[1].content;
+    const fields = [...user.matchAll(/(\d+)\. 字段名“([^”]*)”/g)].map((m) => ({ id: Number(m[1]), path: m[2] === '昵称' ? 'education[].school' : null }));
+    return JSON.stringify({ fields });
+  }
   if (sys.includes('"followUps"')) {
     return JSON.stringify({ score: 72, scores: [{ name: '可信度', score: 80 }], summary: '经历扎实，结果写得不够。', strengths: ['有大厂相关实习'],
       issues: [{ level: '高', where: '实习经历', problem: '没有量化结果', fix: '写清压测把接口延迟降低了多少' }], missing: [], followUps: ['压测是怎么做的'] });
@@ -283,6 +289,40 @@ test('候选卡：没填的字段点进去，从档案里选一项填上；记�
   expect(again.report.items.find((i) => i.label.startsWith('昵称'))).toMatchObject({ status: 'ok', value: '武汉大学', note: '按你之前的选择' });
   expect(again.submitted).toBe(false);
   await sw.evaluate(() => chrome.storage.local.remove('fieldMemory'));
+  await again.close();
+});
+
+test('AI 认字段：侧边栏点一下，只发字段名；认出的标黄并按网站记住', async () => {
+  aiRequests.length = 0;
+  await sw.evaluate((port) => chrome.storage.local.set({ aiSettings: { provider: 'custom', apiKey: 'test-key', model: 'fake', baseUrl: `http://localhost:${port}/v1` } }), PORT);
+  const first = await run('steps');
+  expect(first.report.items.find((i) => i.label.startsWith('昵称'))).toMatchObject({ status: 'skip', note: '没认出这个字段' });
+  await sw.evaluate((r) => chrome.storage.local.set({ lastReport: r }), first.report);
+  const id = new URL(sw.url()).host;
+  const side = await ctx.newPage();
+  await side.setViewportSize({ width: 400, height: 1000 });
+  await side.goto(`chrome-extension://${id}/sidepanel.html`);
+  const page = ctx.pages().find((p) => p.url().endsWith('/steps.html'))!;
+  await page.bringToFront(); // 侧边栏操作的是当前标签页
+  await side.getByRole('button', { name: '让 AI 认一认' }).click();
+  await expect(side.getByText(/AI 认出并填上了 1 个字段/)).toBeVisible();
+  if (process.env.SHOT_AI_GUESS) await side.screenshot({ path: process.env.SHOT_AI_GUESS, fullPage: true });
+  expect(await page.inputValue('#nick')).toBe('北京大学');
+  await expect(side.locator('.report-list li', { hasText: '昵称' })).toContainText('AI 认作“学校”，请核对');
+
+  const p = sampleProfile();
+  const sent = aiRequests.join('\n');
+  expect(sent).toContain('昵称');
+  for (const x of [p.basic.name, p.basic.phone, p.basic.email, p.education[0]!.school, p.internships[0]!.company]) expect(sent).not.toContain(x);
+  const mem = await sw.evaluate(async () => Object.values((await chrome.storage.local.get('fieldMemory')).fieldMemory?.items ?? {}));
+  expect(mem).toEqual([expect.objectContaining({ path: 'education[0].school', source: 'ai' })]);
+  await first.close();
+  await side.close();
+
+  const again = await run('steps');
+  expect(again.report.items.find((i) => i.label.startsWith('昵称'))).toMatchObject({ status: 'warn', value: '北京大学', note: 'AI 按字段名认的，请核对' });
+  expect(again.submitted).toBe(false);
+  await sw.evaluate(() => chrome.storage.local.remove(['fieldMemory', 'aiSettings', 'lastReport']));
   await again.close();
 });
 

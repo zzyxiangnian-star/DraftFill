@@ -25,7 +25,7 @@ export function MemoryCard({ store }: { store: ProfileStore }) {
   if (!mem) return null;
   const save = (m: FieldMemory) => { setMem(m); void fieldMemoryItem.setValue(m); };
 
-  const byHost = new Map<string, { label: string; path: string; at: number }[]>();
+  const byHost = new Map<string, { label: string; path: string; at: number; source?: 'ai' }[]>();
   for (const r of Object.values(mem.items)) byHost.set(r.host, [...(byHost.get(r.host) ?? []), r]);
   const hosts = [...byHost.entries()].sort((a, b) => Math.max(...b[1].map((x) => x.at)) - Math.max(...a[1].map((x) => x.at)));
 
@@ -35,7 +35,7 @@ export function MemoryCard({ store }: { store: ProfileStore }) {
         <h2 style={{ flex: 1 }}>记住的字段</h2>
         {hosts.length > 0 && <button className="btn btn-text small" onClick={() => save(forget(mem))}><Trash2 {...iconProps} /> 全部清除</button>}
       </div>
-      <p className="small muted">插件没认出的字段，你在候选卡里选过一次并勾了“记住”，下次在同一个网站就会自动填。只按网站记，不会套用到别的网站。</p>
+      <p className="small muted">插件没认出的字段，你在候选卡里选过一次并勾了“记住”，或者让 AI 认过，下次在同一个网站就会自动填（AI 认的仍会标黄）。只按网站记，不会套用到别的网站。</p>
       {!hosts.length ? <p className="small muted">还没有记住的字段。</p> : (
         <ul className="memory-list">
           {hosts.map(([host, items]) => (
@@ -43,7 +43,7 @@ export function MemoryCard({ store }: { store: ProfileStore }) {
               <details>
                 <summary><strong>{host}</strong> <span className="muted small">{items.length} 个字段</span></summary>
                 <ul className="small">
-                  {items.map((x) => <li key={x.label + x.path}>{x.label} <span className="muted">→ {pathName(x.path, store)}</span></li>)}
+                  {items.map((x) => <li key={x.label + x.path}>{x.label} <span className="muted">→ {pathName(x.path.replace(/\[\d+\]/, '[]'), store)}{x.source === 'ai' && '（AI 认的）'}</span></li>)}
                 </ul>
               </details>
               <button className="btn btn-text small" aria-label={`清除 ${host} 的记录`} onClick={() => save(forget(mem, host))}><Trash2 {...iconProps} /> 清除</button>

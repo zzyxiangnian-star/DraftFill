@@ -1,9 +1,10 @@
 import { startCandidateCard, type PickEvent } from '@/src/lib/fill/card';
-import { countNewFillable, fillFromCandidate, runFill, undoFill, type FillEntry } from '@/src/lib/fill/fill';
+import { countNewFillable, fillFromCandidate, fillFromGuess, guessPath, runFill, undoFill, unknownFields, UNKNOWN_REASON, type FillEntry, type FillItem } from '@/src/lib/fill/fill';
 import { applyMarks, clearMarks, reveal } from '@/src/lib/fill/marks';
 import { fieldMemoryItem, hostOf, remember, signature } from '@/src/lib/fill/memory';
 import { lastReportItem, pageChangeItem } from '@/src/lib/fill/reportStore';
-import type { FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
+import type { AiApplyResult, AiFieldsResult, FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
+import type { FieldGuess } from '@/src/lib/ai/skills/fieldMatch';
 import { activeProfile, loadStore } from '@/src/lib/profile/store';
 import { extractJob } from '@/src/lib/tracker/jobPage';
 
@@ -75,10 +76,7 @@ async function pick(entries: FillEntry[], { entry, candidate, remember: keep }: 
     const item = await fillFromCandidate(entry, candidate.path, candidate.value);
     const ok = item.status === 'ok' || item.status === 'warn';
     applyMarks(document, entries);
-    const last = await lastReportItem.getValue();
-    if (last && last.url === location.href && !last.undoneAt) {
-      await lastReportItem.setValue({ ...last, items: last.items.map((i) => (i.index === item.index ? item : i)) });
-    }
+    await updateReport([item]);
     const host = hostOf(location.href);
     const sig = signature(entry.control, host);
     if (ok && keep && sig) {
@@ -89,6 +87,51 @@ async function pick(entries: FillEntry[], { entry, candidate, remember: keep }: 
   } finally {
     window.__wangshenBusy = false;
   }
+}
+
+/** 侧边栏里更新这一项（同一页面、没撤销过的记录） */
+async function updateReport(items: FillItem[]) {
+  const last = await lastReportItem.getValue();
+  if (!last || last.url !== location.href || last.undoneAt) return;
+  const byIndex = new Map(items.map((i) => [i.index, i]));
+  await lastReportItem.setValue({ ...last, items: last.items.map((i) => byIndex.get(i.index) ?? i) });
+}
+
+/** 计划书 L2：把没认出的字段交给侧边栏（只有字段名、分区和选项），由侧边栏去问 AI */
+async function aiFields(): Promise<AiFieldsResult> {
+  const entries = window.__wangshenEntries;
+  if (!entries) return { ok: false, reason: NO_RECORD };
+  const profile = activeProfile(await loadStore());
+  return { ok: true, fields: unknownFields(entries), custom: (profile?.custom ?? []).filter((f) => f.label).map((f) => ({ id: f.id, label: f.label })) };
+}
+
+/** 写入 AI 认出的字段，标黄；按网站记下来，下次直接认（仍标黄） */
+async function aiApply(guesses: FieldGuess[]): Promise<AiApplyResult> {
+  const entries = window.__wangshenEntries;
+  if (!entries) return { ok: false, reason: NO_RECORD };
+  const profile = activeProfile(await loadStore());
+  if (!profile) return { ok: false, reason: '还没有档案，请先在设置页创建' };
+  window.__wangshenCard?.(); // 写入期间先停掉候选卡，写完再按新结果打开
+  const host = hostOf(location.href);
+  let memory = await fieldMemoryItem.getValue();
+  const changed: FillItem[] = [];
+  for (const g of guesses) {
+    const e = entries[g.id];
+    if (!e || e.item.path !== null || e.item.note !== UNKNOWN_REASON) continue;
+    const path = guessPath(entries, g.id, g.path);
+    const item = await fillFromGuess(e, path, profile);
+    changed.push(item);
+    const sig = signature(e.control, host);
+    if (item.status === 'warn' && sig) {
+      memory = remember(memory, sig, { path, label: e.item.label.replace(/（.*$/, ''), host, source: 'ai' });
+    }
+  }
+  await fieldMemoryItem.setValue(memory);
+  applyMarks(document, entries);
+  await updateReport(changed);
+  window.__wangshenCard = startCandidateCard(document, entries, { profile, onPick: (ev) => pick(entries, ev) });
+  const filled = changed.filter((i) => i.status === 'warn').length;
+  return { ok: true, filled, skipped: changed.length - filled };
 }
 
 async function undo(): Promise<UndoResult> {
@@ -124,6 +167,8 @@ export default defineContentScript({
       if (msg.type === 'undo') { exclusive(undo).then(sendResponse, fail); return true; }
       if (msg.type === 'reveal') sendResponse(revealAt(msg.index));
       if (msg.type === 'job') sendResponse({ ok: true, job: extractJob(document) });
+      if (msg.type === 'ai-fields') { aiFields().then(sendResponse, fail); return true; }
+      if (msg.type === 'ai-apply') { exclusive(() => aiApply(msg.guesses)).then(sendResponse, fail); return true; }
     });
   },
 });

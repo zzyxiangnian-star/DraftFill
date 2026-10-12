@@ -1,6 +1,6 @@
 import { lastReportItem } from '@/src/lib/fill/reportStore';
 import { applicationStoreItem, dueSoon } from '@/src/lib/tracker/applications';
-import type { FillResult, JobResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
+import type { AiApplyResult, AiFieldsResult, FillResult, JobResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
 
 // 用户在 popup 或侧边栏点击后才把 content script 注入当前标签页（activeTab），不常驻任何网站。
 async function injectIntoActiveTab(): Promise<{ tabId: number } | { reason: string }> {
@@ -39,6 +39,10 @@ async function handle(msg: Request): Promise<unknown> {
       return forward<RevealResult>({ type: 'reveal', index: msg.index });
     case 'job-active-tab':
       return forward<JobResult>({ type: 'job' });
+    case 'ai-fields-active-tab':
+      return forward<AiFieldsResult>({ type: 'ai-fields' });
+    case 'ai-apply-active-tab':
+      return forward<AiApplyResult>({ type: 'ai-apply', guesses: msg.guesses });
     default:
       return undefined;
   }

@@ -12,6 +12,8 @@ export interface Remembered {
   label: string;
   host: string;
   at: number;
+  /** ai：AI 看字段名认出来的（计划书 L2），下次填写仍标黄请用户核对 */
+  source?: 'ai';
 }
 
 export interface FieldMemory {

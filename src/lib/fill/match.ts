@@ -1,6 +1,7 @@
 import type { Profile } from '../profile/schema';
 import { ALIASES, type Alias } from './aliases';
 import type { Control } from './detect';
+import { UNKNOWN_REASON } from './reasons';
 import { clean } from './text';
 
 // Matcher：给每个字段打分，选出最可能的档案路径。
@@ -87,7 +88,7 @@ export function matchControl(c: Control, profile: Profile): MatchResult {
     .sort((x, y) => y.score - x.score);
   const [best, second] = scored;
   if (!best || best.score < LOW) {
-    return { path: null, reason: c.label || c.placeholder ? '没认出这个字段' : '这个字段没有标签，无法判断' };
+    return { path: null, reason: c.label || c.placeholder ? UNKNOWN_REASON : '这个字段没有标签，无法判断' };
   }
   const close = second && best.score - second.score < MARGIN;
   let path = c.range === 'end' ? best.path.replace(/\.start$/, '.end') : best.path;

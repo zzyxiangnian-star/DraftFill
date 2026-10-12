@@ -10,6 +10,8 @@ import { collectRoots } from './roots';
 import { datePartValue } from './dates';
 import { generalPath, hostOf, recall, signature, type FieldMemory } from './memory';
 import { ALIASES } from './aliases';
+import { UNKNOWN_REASON } from './reasons';
+import type { UnknownField } from '../ai/skills/fieldMatch';
 import { chooseFuzzy, expandSchool, fuzzyKindOf } from './fuzzy';
 import { chooseRegion, chooseRepeat, shortRegion } from './region';
 import { addMissingEntries } from './addEntries';
@@ -569,6 +571,8 @@ export interface PlannedField {
   reason: string;
   /** 按字段记忆认出的（用户之前在候选卡里选过） */
   remembered?: boolean;
+  /** 字段记忆里的这一条是 AI 认的，不是用户选的 */
+  aiGuess?: boolean;
 }
 
 const KNOWN_PATHS = new Set(ALIASES.map((a) => a.path));
@@ -603,7 +607,8 @@ export function planFill(doc: Document, profile: Profile, memory?: FieldMemory |
       if (control.part === 'month' && n > 0) index = n - 1;
       else { index = n; counters.set(m.path, n + 1); }
     }
-    return { control, path: m.path, index, sure: m.confidence === 'high', reason: '', ...(remembered && { remembered }) };
+    const aiGuess = remembered && r!.source === 'ai';
+    return { control, path: m.path, index, sure: m.confidence === 'high' && !aiGuess, reason: '', ...(remembered && { remembered }), ...(aiGuess && { aiGuess }) };
   });
 }
 
@@ -613,6 +618,8 @@ const HIGH_RISK = /^basic\.(nativePlace|hukou|idNumber|birthDate)$|^education\[\
 export interface FillEntry {
   control: Control;
   item: FillItem;
+  /** 多条经历里的第几条（item.path 是 education[].school 这类通用路径时） */
+  pathIndex?: number;
   /** 写入前的原值，撤销时恢复 */
   original: string;
   written: boolean;
@@ -637,7 +644,7 @@ export async function runFill(doc: Document, profile: Profile, memory?: FieldMem
     const label = describe(f.control) + (f.path ? (pathIndexLabel(f.path, f.index) ? `（${pathIndexLabel(f.path, f.index)}）` : '') : '');
     const flags = { ...(f.control.required && { required: true }), ...(f.control.kind === 'file' && { attach: true }) };
     const add = (item: Omit<FillItem, 'index' | 'label'>, written = false, original = '') =>
-      entries.push({ control: f.control, item: { index, label, ...item, ...flags }, original, written });
+      entries.push({ control: f.control, item: { index, label, ...item, ...flags }, original, written, pathIndex: f.index });
 
     if (!f.path) { add({ path: null, status: 'skip', value: '', note: f.reason }); continue; }
     const v = resolveValue(profile, f.path, f.index);
@@ -649,7 +656,8 @@ export async function runFill(doc: Document, profile: Profile, memory?: FieldMem
     if (f.path === 'intention.cities' && !['text', 'textarea'].includes(f.control.kind)) value = value.split(/[、,，/;；\s]+/)[0] ?? value;
     try {
       let o = await write(f.control, f.path, value, f.sure);
-      if (o.status === 'ok' && HIGH_RISK.test(f.path)) o = { ...o, status: 'warn', note: '重要信息，请核对' };
+      if (f.aiGuess && (o.status === 'ok' || o.status === 'warn')) o = { ...o, status: 'warn', note: AI_NOTE };
+      else if (o.status === 'ok' && HIGH_RISK.test(f.path)) o = { ...o, status: 'warn', note: '重要信息，请核对' };
       else if (o.status === 'ok' && f.remembered) o = { ...o, note: '按你之前的选择' };
       add({ path: f.path, ...o }, o.status !== 'skip', original);
     } catch (e) {
@@ -691,6 +699,68 @@ export async function fillFromCandidate(e: FillEntry, path: string, value: strin
   e.item = { ...e.item, path, status: o.status, value: o.value, note: o.status === 'ok' ? '你从候选里选的' : o.note };
   e.written ||= o.status !== 'skip';
   return e.item;
+}
+
+// —— AI 认字段（计划书 L2）——
+
+export { UNKNOWN_REASON };
+const AI_NOTE = 'AI 按字段名认的，请核对';
+
+/** 本次填写里没认出、还空着、能写入的字段，交给 AI 看字段名。不含任何档案内容。 */
+export function unknownFields(entries: FillEntry[]): UnknownField[] {
+  const out: UnknownField[] = [];
+  entries.forEach((e, id) => {
+    const c = e.control;
+    if (e.item.path !== null || e.item.note !== UNKNOWN_REASON || !pickable(c) || !c.el.isConnected || !isEmpty(c)) return;
+    if (!c.label && !c.placeholder) return;
+    const kind = c.kind === 'textarea' ? 'textarea' : c.kind === 'text' || c.kind === 'date' || c.kind === 'month' ? 'text' : 'choice';
+    out.push({ id, label: describe(c), placeholder: c.placeholder.slice(0, 40), section: c.section, kind, options: c.options.slice(0, 20) });
+  });
+  return out;
+}
+
+/**
+ * AI 给的通用路径落到第几条：和它挨着的、已认出的同一类经历字段属于同一段
+ * （第 2 段教育经历里的“主修方向”跟着前面的“学校”算第 2 条）。
+ */
+export function guessPath(entries: FillEntry[], id: number, path: string): string {
+  const c = entries[id]!.control;
+  if (c.section === 'basic' && path.startsWith('education[]')) return path.replace('[]', '[0]');
+  const arr = parsePath(path);
+  if (!arr || arr.index !== null) return path;
+  const indexOf = (e: FillEntry) => {
+    const a = e.item.path ? parsePath(e.item.path) : null;
+    return a && a.list === arr.list ? a.index ?? e.pathIndex ?? 0 : null;
+  };
+  const before = entries.slice(0, id).reverse().map(indexOf).find((x) => x !== null);
+  const after = entries.slice(id + 1).map(indexOf).find((x) => x !== null);
+  return path.replace('[]', `[${before ?? after ?? 0}]`);
+}
+
+/** 写入 AI 认出的字段：一律标黄请用户核对 */
+export async function fillFromGuess(e: FillEntry, path: string, profile: Profile): Promise<FillItem> {
+  const v = resolveValue(profile, path);
+  const name = path.startsWith('custom:') ? profile.custom.find((f) => `custom:${f.id}` === path)?.label ?? '其他信息' : pathName(path);
+  if (v.value === null) {
+    e.item = { ...e.item, path, status: 'skip', value: '', note: `AI 认为是“${name}”，但${v.reason}` };
+    return e.item;
+  }
+  if (!e.written) e.original = originalValue(e.control);
+  let o: Outcome;
+  try {
+    o = await write(e.control, path, v.value, false);
+  } catch (err) {
+    o = fail('', err instanceof SafetyError ? err.message : `填写出错：${String(err)}`);
+  }
+  if (o.status === 'ok') o = { ...o, status: 'warn' };
+  e.item = { ...e.item, path, status: o.status, value: o.value, note: o.status === 'warn' ? `AI 认作“${name}”，请核对` : o.note };
+  e.written ||= o.status !== 'skip';
+  return e.item;
+}
+
+function pathName(path: string): string {
+  const a = ALIASES.find((x) => x.path === generalPath(path) || x.path === path);
+  return a?.strong[0] ?? a?.ctx?.[0] ?? path;
 }
 
 export async function fillDocument(doc: Document, profile: Profile): Promise<FillReport> {
