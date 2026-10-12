@@ -165,3 +165,7 @@
 .answer-item { gap: var(--space-2); }
 .answer-q { font-weight: 600; color: var(--text-strong); }
 .answer-text { max-height: 12em; overflow: auto; }
+.gaps { gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-sm); background: var(--warning-soft); }
+.gap { gap: var(--space-2); }
+.gap .input { flex: 1; min-width: 0; height: 32px; }
+.gap-before { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

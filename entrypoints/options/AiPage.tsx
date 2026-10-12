@@ -20,6 +20,7 @@ import { AnswerLibrary, useAnswers } from './AnswerLibrary';
 import { answerAdaptSkill, type AdaptResult } from '@/src/lib/ai/skills/answerAdapt';
 import { addAnswer, markUsed, similarAnswers, type Answer } from '@/src/lib/answers/library';
 import { Copy } from './Copy';
+import { GapBlock, GapFill } from './GapFill';
 import { SkillSettings } from './SkillSettings';
 
 type Tool = 'ask' | 'diagnose' | 'polish' | 'jd' | 'question' | 'answers' | 'notice';
@@ -169,15 +170,15 @@ function PolishOne({ exp, profile, onApply }: { exp: Exp; profile: Profile; onAp
       {res && (
         <div className="polish-versions enter">
           {res.versions.map((v) => (
-            <div key={v.style} className="polish-version">
-              <div className="row"><span className="label">{v.style}</span><span className="spacer" /><Copy text={v.text} />
-                <button className="btn btn-text small" disabled={applied === v.text} onClick={() => { onApply(v.text); setApplied(v.text); }}>
-                  <Check {...iconProps} /> {applied === v.text ? '已写回档案' : '写回档案'}</button></div>
-              <p className="pre">{v.text}</p>
+            <div key={`${v.style}-${v.text}`} className="polish-version"><GapFill text={v.text}>{(t, left) => (
+              <div className="row" style={{ flexWrap: 'wrap' }}><span className="label">{v.style}</span><span className="spacer" /><Copy text={t} />
+                <GapBlock left={left} />
+                {!left && <button className="btn btn-text small" disabled={applied === t} onClick={() => { onApply(t); setApplied(t); }}>
+                  <Check {...iconProps} /> {applied === t ? '已写回档案' : '写回档案'}</button>}</div>)}</GapFill>
             </div>
           ))}
           {res.tips.length > 0 && <div className="ai-list"><h3>还可以补充</h3><ul>{res.tips.map((t) => <li key={t}>{t}</li>)}</ul></div>}
-          <p className="small muted">【待补充】的地方请换成真实情况，没有就删掉，不要编。</p>
+          <p className="small muted">AI 不知道的数字和细节会标成【待补充】，补上真实情况或删掉之后才能写回档案。</p>
         </div>
       )}
     </li>
@@ -339,6 +340,13 @@ function Notice({ profile }: { profile: Profile }) {
 }
 
 // —— 开放题 ——
+/** 字数（去掉空格），超过上限标红 */
+function Chars({ text, limit }: { text: string; limit: number }) {
+  const n = countChars(text);
+  const over = limit > 0 && n > limit;
+  return <span className={`small ${over ? 'text-err' : 'muted'}`}>{n}{limit ? ` / ${limit}` : ''} 字{over ? '，超出上限' : ''}</span>;
+}
+
 function SaveButton({ saved, onClick }: { saved: boolean; onClick: () => void }) {
   return (
     <button className="btn btn-text small" disabled={saved} onClick={onClick}>
@@ -372,14 +380,14 @@ function SimilarAnswer({ answer, r, profile, question, limit, company, onUse, on
           {r.busy ? <Loader2 {...iconProps} className="spin" /> : <Sparkles {...iconProps} />} 让 AI 按这道题改写</button>
       </div>
       {res && (
-        <div className="stack enter" style={{ gap: 'var(--space-2)' }}>
-          <div className="row">
+        <div className="stack enter" style={{ gap: 'var(--space-2)' }}><GapFill key={res.text} text={res.text}>{(t, left) => (
+          <div className="row" style={{ flexWrap: 'wrap' }}>
             <span className="label">改写后</span><span className="spacer" />
-            <span className={`small ${res.over ? 'text-err' : 'muted'}`}>{res.chars}{limit ? ` / ${limit}` : ''} 字{res.over ? '，超出上限' : ''}</span>
-            <Copy text={res.text} />
-            <SaveButton saved={saved.has(res.text)} onClick={() => onSave(res.text)} />
-          </div>
-          <p className="pre">{res.text}</p>
+            <Chars text={t} limit={limit} />
+            <Copy text={t} />
+            <GapBlock left={left} />
+            {!left && <SaveButton saved={saved.has(t)} onClick={() => onSave(t)} />}
+          </div>)}</GapFill>
           {res.changes.length > 0 && <ul className="small muted">{res.changes.map((c) => <li key={c}>{c}</li>)}</ul>}
         </div>
       )}
@@ -446,14 +454,14 @@ function OpenQuestion({ profile }: { profile: Profile }) {
         <div className="ai-result enter">
           {(res.type || res.plan) && <p><span className="tag tag-mid">{res.type || '题型'}</span> {res.plan}</p>}
           {res.versions.map((v, i) => (
-            <div key={i} className="polish-version">
-              <div className="row">
+            <div key={`${i}-${v.text}`} className="polish-version"><GapFill text={v.text}>{(t, left) => (
+              <div className="row" style={{ flexWrap: 'wrap' }}>
                 <span className="label">版本 {i + 1}{v.angle ? ` · ${v.angle}` : ''}</span><span className="spacer" />
-                <span className={`small ${v.over ? 'text-err' : 'muted'}`}>{v.chars}{Number(limit) ? ` / ${limit}` : ''} 字{v.over ? '，超出上限' : ''}</span>
-                <Copy text={v.text} />
-                <SaveButton saved={saved.has(v.text)} onClick={() => save(v.text)} />
-              </div>
-              <p className="pre">{v.text}</p>
+                <Chars text={t} limit={Number(limit) || 0} />
+                <Copy text={t} />
+                <GapBlock left={left} />
+                {!left && <SaveButton saved={saved.has(t)} onClick={() => save(t)} />}
+              </div>)}</GapFill>
             </div>
           ))}
           <p className="small muted">AI 写的是草稿：请对照真实经历修改，换成你自己的说法再提交。改好的版本可以存进回答库，下次遇到相似的题直接用。</p>

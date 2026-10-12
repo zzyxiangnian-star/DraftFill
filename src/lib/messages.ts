@@ -1,4 +1,5 @@
-import type { FillReport } from './fill/fill';
+import type { FillItem, FillReport } from './fill/fill';
+import type { AskField } from './fill/ask';
 import type { JobInfo } from './tracker/jobPage';
 import type { FieldGuess, UnknownField } from './ai/skills/fieldMatch';
 
@@ -17,7 +18,11 @@ export type Request =
   | { type: 'ai-fields-active-tab' }
   | { type: 'ai-fields' }
   | { type: 'ai-apply-active-tab'; guesses: FieldGuess[] }
-  | { type: 'ai-apply'; guesses: FieldGuess[] };
+  | { type: 'ai-apply'; guesses: FieldGuess[] }
+  | { type: 'ask-fields-active-tab' }
+  | { type: 'ask-fields' }
+  | { type: 'ask-answer-active-tab'; index: number; value: string; save: boolean }
+  | { type: 'ask-answer'; index: number; value: string; save: boolean };
 
 export type FillResult =
   | { ok: true; report: FillReport }
@@ -37,3 +42,9 @@ export type AiFieldsResult =
   | { ok: false; reason: string };
 
 export type AiApplyResult = { ok: true; filled: number; skipped: number } | { ok: false; reason: string };
+
+/** 计划书 L6：必填但档案里没有依据的字段，侧边栏逐个问用户 */
+export type AskFieldsResult = { ok: true; fields: AskField[] } | { ok: false; reason: string };
+
+/** saved：存进了档案的哪里（对应的档案项 / 其他信息），没存为 null */
+export type AskAnswerResult = { ok: true; item: FillItem; saved: 'profile' | 'custom' | null } | { ok: false; reason: string };

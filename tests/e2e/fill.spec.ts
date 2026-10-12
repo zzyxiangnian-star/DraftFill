@@ -33,7 +33,7 @@ function fakeAnswer(body: string): string {
     });
   }
   if (sys.includes('现在遇到一道相似的新题')) {
-    return JSON.stringify({ text: '我选择示例科技，是因为在校园二手交易平台项目里做过订单服务，想在电商后端继续深入。', changes: ['把原来的公司名换成了示例科技'] });
+    return JSON.stringify({ text: '我选择示例科技，是因为在校园二手交易平台项目里做过订单服务，想在电商后端继续深入，项目里把下单接口提速了【待补充：提速了多少】。', changes: ['把原来的公司名换成了示例科技'] });
   }
   if (sys.includes('从用户粘贴的校招通知')) {
     return JSON.stringify({ company: '示例科技', position: '后端开发工程师', kind: '面试',
@@ -431,14 +431,52 @@ test('回答库：网申页面的问答题里列出相似题的旧回答；开�
   const sent = aiRequests.join('\n');
   expect(sent).toContain('华润电力在新能源');
   for (const x of [p.basic.name, p.basic.phone, p.internships[0]!.company]) expect(sent).not.toContain(x);
+  // 缺的信息补上之前不能存（计划书 L6）
+  await expect(opt.getByText('先补上 1 处再存')).toBeVisible();
+  await expect(opt.getByRole('button', { name: '存进回答库' })).toHaveCount(0);
+  await opt.getByLabel('提速了多少').fill('40%');
+  if (process.env.SHOT_GAPS) await opt.screenshot({ path: process.env.SHOT_GAPS, fullPage: true });
   await opt.getByRole('button', { name: '存进回答库' }).first().click();
   await expect(opt.getByRole('button', { name: '已存进回答库' })).toBeVisible();
+  const kept = await sw.evaluate(async () => (await chrome.storage.local.get('answers')).answers.items[0].text);
+  expect(kept).toContain('提速了40%');
   if (process.env.SHOT_ANSWERS) await opt.screenshot({ path: process.env.SHOT_ANSWERS, fullPage: true });
   await opt.getByRole('tab', { name: '回答库' }).click();
   await expect(opt.locator('.answer-item')).toHaveCount(3);
   if (process.env.SHOT_ANSWER_LIB) await opt.screenshot({ path: process.env.SHOT_ANSWER_LIB, fullPage: true });
   await sw.evaluate(() => chrome.storage.local.remove(['answers', 'aiSettings', 'lastReport']));
   await opt.close();
+});
+
+test('缺信息询问：必填项档案里没有，侧边栏问你；答了才写进页面，存进档案后下次直接填', async () => {
+  const before = await sw.evaluate(() => chrome.storage.local.get('profiles'));
+  const first = await run('steps');
+  expect(first.report.items.find((i) => i.label === '兴趣爱好')).toMatchObject({ status: 'skip', required: true });
+  await sw.evaluate((r) => chrome.storage.local.set({ lastReport: r }), first.report);
+  const id = new URL(sw.url()).host;
+  const side = await ctx.newPage();
+  await side.setViewportSize({ width: 400, height: 1000 });
+  await side.goto(`chrome-extension://${id}/sidepanel.html`);
+  const page = ctx.pages().find((p) => p.url().endsWith('/steps.html'))!;
+  await page.bringToFront();
+  await expect(side.getByText('有 1 个必填项要问你')).toBeVisible();
+  expect(await page.inputValue('#hobby')).toBe(''); // 问之前不填
+  await side.getByLabel('兴趣爱好').fill('跑步、摄影');
+  if (process.env.SHOT_ASK) await side.screenshot({ path: process.env.SHOT_ASK, fullPage: true });
+  await side.getByRole('button', { name: '填上' }).click();
+  await expect(side.getByText(/兴趣爱好：已填上，也存进了档案的「其他信息」/)).toBeVisible();
+  expect(await page.inputValue('#hobby')).toBe('跑步、摄影');
+  expect(first.submitted).toBe(false);
+  const custom = await sw.evaluate(async () => (await chrome.storage.local.get('profiles')).profiles.profiles[0].custom);
+  expect(custom).toEqual([expect.objectContaining({ label: '兴趣爱好', value: '跑步、摄影' })]);
+  await first.close();
+  await side.close();
+
+  const again = await run('steps');
+  expect(again.report.items.find((i) => i.label === '兴趣爱好')).toMatchObject({ status: 'ok', value: '跑步、摄影' });
+  await sw.evaluate((b) => chrome.storage.local.set(b), before);
+  await sw.evaluate(() => chrome.storage.local.remove(['lastReport']));
+  await again.close();
 });
 
 test('收藏岗位：摘出岗位和截止日期，快截止时图标提醒，看板里能跳去分析匹配度', async () => {

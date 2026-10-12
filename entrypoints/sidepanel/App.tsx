@@ -8,6 +8,7 @@ import type { FillItem, FillReport } from '@/src/lib/fill/fill';
 import { lastReportItem, pageChangeItem, type PageChange } from '@/src/lib/fill/reportStore';
 import { UNKNOWN_REASON } from '@/src/lib/fill/reasons';
 import { AiGuess } from './AiGuess';
+import { AskMissing } from './AskMissing';
 import { Board } from './Board';
 
 type Tab = 'result' | 'board';
@@ -94,6 +95,7 @@ function Result({ report }: { report: FillReport }) {
           <p className="small muted" style={{ margin: 0 }}>已经有内容的字段不会被覆盖。</p>
         </section>
       )}
+      {!undone && <AskMissing key={`ask-${report.at}`} />}
       {!undone && <AiGuess count={unknown} key={report.at} />}
       {!!report.added?.length && !undone && (
         <p className="notice small">自动添加了 {report.added.map((a) => `${a.count} 段${a.name}`).join('、')}，并按档案填好。撤销不会删掉这些段落，不需要的话请自己删除。</p>

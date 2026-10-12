@@ -3,9 +3,10 @@ import { ANSWER_PREFIX, countNewFillable, fillFromCandidate, fillFromGuess, gues
 import { applyMarks, clearMarks, reveal } from '@/src/lib/fill/marks';
 import { fieldMemoryItem, hostOf, remember, signature } from '@/src/lib/fill/memory';
 import { lastReportItem, pageChangeItem } from '@/src/lib/fill/reportStore';
-import type { AiApplyResult, AiFieldsResult, FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
+import type { AiApplyResult, AiFieldsResult, AskAnswerResult, AskFieldsResult, FillResult, Request, RevealResult, UndoResult } from '@/src/lib/messages';
 import type { FieldGuess } from '@/src/lib/ai/skills/fieldMatch';
-import { activeProfile, loadStore } from '@/src/lib/profile/store';
+import { activeProfile, loadStore, saveStore, updateProfile } from '@/src/lib/profile/store';
+import { fillFromUser, missingFields, saveAnswer } from '@/src/lib/fill/ask';
 import { extractJob } from '@/src/lib/tracker/jobPage';
 import { answerStoreItem, markUsed } from '@/src/lib/answers/library';
 import type { Profile } from '@/src/lib/profile/schema';
@@ -145,6 +146,39 @@ async function aiApply(guesses: FieldGuess[]): Promise<AiApplyResult> {
   return { ok: true, filled, skipped: changed.length - filled };
 }
 
+/** 计划书 L6：必填但没填上的字段，交给侧边栏去问用户 */
+function askFields(): AskFieldsResult {
+  const entries = window.__wangshenEntries;
+  return entries ? { ok: true, fields: missingFields(entries) } : { ok: false, reason: NO_RECORD };
+}
+
+/** 用户在侧边栏答了：写进字段；勾了“存进档案”就存进当前档案 */
+async function askAnswer(index: number, value: string, save: boolean): Promise<AskAnswerResult> {
+  const entries = window.__wangshenEntries;
+  const e = entries?.[index];
+  if (!entries || !e || !e.control.el.isConnected) return { ok: false, reason: NO_RECORD };
+  const store = await loadStore();
+  const profile = activeProfile(store);
+  if (!profile) return { ok: false, reason: '还没有档案，请先在设置页创建' };
+  window.__wangshenCard?.();
+  const path = e.item.path;
+  const item = await fillFromUser(e, value);
+  applyMarks(document, entries);
+  await updateReport([item]);
+  let saved: 'profile' | 'custom' | null = null;
+  let current = profile;
+  if (save && item.status === 'ok') {
+    const r = saveAnswer(profile, { label: item.label, path }, e.pathIndex, value);
+    if (r) {
+      await saveStore(updateProfile(store, r.profile));
+      saved = r.where;
+      current = r.profile;
+    }
+  }
+  await openCard(entries, current);
+  return { ok: true, item, saved };
+}
+
 async function undo(): Promise<UndoResult> {
   const entries = window.__wangshenEntries;
   if (!entries) return { ok: false, reason: NO_RECORD };
@@ -180,6 +214,8 @@ export default defineContentScript({
       if (msg.type === 'job') sendResponse({ ok: true, job: extractJob(document) });
       if (msg.type === 'ai-fields') { aiFields().then(sendResponse, fail); return true; }
       if (msg.type === 'ai-apply') { exclusive(() => aiApply(msg.guesses)).then(sendResponse, fail); return true; }
+      if (msg.type === 'ask-fields') sendResponse(askFields());
+      if (msg.type === 'ask-answer') { exclusive(() => askAnswer(msg.index, msg.value, msg.save)).then(sendResponse, fail); return true; }
     });
   },
 });
